@@ -1,0 +1,21 @@
+{
+  "name": "sample-shop",
+  "version": "1.0.0",
+  "description": "Order taking backend that charges customers through Stripe and stores orders in PostgreSQL.",
+  "main": "src/server.ts",
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.11.3",
+    "stripe": "^14.0.0",
+    "sequelize": "^6.37.0"
+  },
+  "devDependencies": {
+    "vitest": "^1.4.0",
+    "typescript": "^5.4.0",
+    "tsx": "^4.7.0"
+  }
+}

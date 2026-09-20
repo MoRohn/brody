@@ -1,0 +1,28 @@
+# docker compose up --build   ->   http://brody:3003   (needs "127.0.0.1 brody" in /etc/hosts)
+services:
+  app:
+    build: .
+    image: brody:latest
+    ports:
+      - "${PORT:-3003}:3003"
+    # Optional: copy .env.example to .env and add ANTHROPIC_API_KEY (and CREDENTIAL_SECRET) to enable AI features.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: "3003"
+      ALLOWED_HOSTS: brody
+      DATABASE_PATH: /data/brody.db
+    volumes:
+      - brody-data:/data
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
+    # Imported repositories are untrusted data and are never executed; the container is additionally locked down.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  brody-data:

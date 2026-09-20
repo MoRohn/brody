@@ -1,26 +1,287 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+ * Five brightness levels, one blue palette family (deep navy #1B4965 and cerulean #006C96). The DEFAULT level lives on
+ * :root so first paint, and a page with no JavaScript, is already right; the others are selected with
+ * <html data-level="...">, set by the brightness control (src/components/ThemeControl.tsx) and, before first paint, by
+ * the inline script in layout.tsx (src/lib/theme.ts).
+ *
+ *   bright     one step brighter than the original
+ *   original   Brody's first blue palette
+ *   default    slightly deeper than the original; what a new visitor sees
+ *   dark       dark surfaces with light text
+ *   darkest    the deepest
+ *
+ * Every text/surface pair is checked against WCAG AA for every level in tests/theme.test.ts. Tokens with two jobs are split:
+ *   --deep     headings and indicators (dark on light levels, light on dark levels)
+ *   --fill     solid fills that carry text (active tab, brand tile, deep buttons), with --on-fill on top
+ *   --accent   the cerulean brand colour for fills, borders and focus; --accent-fg is the ink on it
+ *   --link     the accent as TEXT, a shade chosen to pass AA on every surface of its level
+ */
+:root,
+:root[data-level="default"] {
+  color-scheme: light;
+  --bg: #d2e0e9;
+  --panel: #e4edf2;
+  --panel2: #c8d9e4;
+  --line: #b1c7d6;
+  --line-strong: #6a899f;
+  --fg: #0a1a26;
+  --fg2: #1d3547;
+  --muted: #3b5163;
+  --code: #cfdfe9;
+
+  --deep: #0f2f45;
+  --fill: #1b4965;
+  --fill-alt: #143a52;
+  --on-fill: #c7ecfb;
+
+  --accent: #006c96;
+  --accent-strong: #005b7f;
+  --accent-soft: rgba(0, 108, 150, 0.16);
+  --accent-fg: #ffffff;
+  --link: #00597d;
+
+  --crit: #a3161f;
+  --high: #8f3d05;
+  --med: #6b4b00;
+  --low: #1f4f8a;
+  --info: #445666;
+  --ok: #14613b;
+
+  /* Each level's page background, for the brightness slider's preview track and the swatches under it. */
+  --swatch-bright: #eaf1f5;
+  --swatch-original: #dce8ef;
+  --swatch-default: #d2e0e9;
+  --swatch-dark: #15283a;
+  --swatch-darkest: #09141c;
+
+  --mono: var(--font-geist-mono), ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --serif: var(--font-serif), Georgia, "Times New Roman", serif;
+  --brand: var(--font-brand), var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --document: var(--font-document), Georgia, "Times New Roman", serif;
+}
+
+:root[data-level="bright"] {
+  --bg: #eaf1f5;
+  --panel: #f8fbfd;
+  --panel2: #dfeaf1;
+  --line: #c8d9e4;
+  --line-strong: #6a899f;
+  --fg: #0a1a26;
+  --fg2: #1d3547;
+  --muted: #3f5568;
+  --code: #e0ebf2;
+}
+
+/* Brody's first blue palette. */
+:root[data-level="original"] {
+  --bg: #dce8ef;
+  --panel: #edf3f7;
+  --panel2: #d0e0ea;
+  --line: #b9cedb;
+  --line-strong: #6a899f;
+  --fg: #0a1a26;
+  --fg2: #1d3547;
+  --muted: #3d5265;
+  --code: #d5e3ec;
+}
+
+/*
+ * The two dark levels. Text roles turn light, and fills become the bright cerulean with dark ink, because a deep-navy
+ * fill would all but disappear against a dark surface while the light blue stays unmistakable.
+ */
+:root[data-level="dark"],
+:root[data-level="darkest"] {
+  color-scheme: dark;
+  --fg: #e9f3f9;
+  --fg2: #cfe0ec;
+  --muted: #a4bccd;
+  --deep: #eaf6fc;
+  --fill: #5dbfe8;
+  --fill-alt: #79cbee;
+  --on-fill: #062232;
+  --accent: #58b8e2;
+  --accent-strong: #7ccbee;
+  --accent-soft: rgba(88, 184, 226, 0.18);
+  --accent-fg: #04202f;
+  --link: #8dd3f3;
+  --crit: #ff9a9f;
+  --high: #ffa564;
+  --med: #e8bd45;
+  --low: #86bcff;
+  --info: #a4bccd;
+  --ok: #5fd096;
+}
+
+:root[data-level="dark"] {
+  --bg: #15283a;
+  --panel: #1e3549;
+  --panel2: #28445b;
+  --line: #37536b;
+  --line-strong: #7092ab;
+  --code: #172e42;
+}
+
+:root[data-level="darkest"] {
+  --bg: #09141c;
+  --panel: #0f202d;
+  --panel2: #162c3c;
+  --line: #223a4c;
+  --line-strong: #5f829b;
+  --fg: #e4eff6;
+  --fg2: #c5d8e6;
+  --muted: #93aec1;
+  --code: #0c1a25;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel2: var(--panel2);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-secondary: var(--fg2);
+  --color-muted: var(--muted);
+  --color-deep: var(--deep);
+  --color-fill: var(--fill);
+  --color-fill-alt: var(--fill-alt);
+  --color-on-fill: var(--on-fill);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-fg: var(--accent-fg);
+  --color-link: var(--link);
+  --color-code: var(--code);
+  --color-crit: var(--crit);
+  --color-high: var(--high);
+  --color-med: var(--med);
+  --color-low: var(--low);
+  --color-info: var(--info);
+  --color-ok: var(--ok);
+  --font-sans: var(--sans);
+  --font-mono: var(--mono);
+  --font-serif: var(--serif);
+  --font-document: var(--document);
+  --radius-xs: 0.375rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.625rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@layer base {
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 14.5px; line-height: 1.5; -webkit-font-smoothing: antialiased; font-feature-settings: "cv02", "cv03", "cv04", "cv11"; }
+h1, h2, h3, .font-serif { font-weight: 700; letter-spacing: -0.01em; font-variant-numeric: lining-nums; }
+h1, h2, h3 { color: var(--deep); }
+strong, b { font-weight: 650; }
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+/* Links inside running text must not rely on colour alone. */
+p a, li a, td a, dd a, .prose-doc a, .text-muted a { text-decoration: underline; text-underline-offset: 2px; }
+code, pre, kbd, .mono { font-family: var(--mono); }
+code { background: var(--code); padding: 1px 5px; border-radius: 6px; font-size: 12px; }
+pre { background: var(--code); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; overflow: auto; font-size: 12px; line-height: 1.5; }
+pre code { background: none; padding: 0; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--deep); outline-offset: 2px; }
+::selection { background: var(--accent); color: var(--accent-fg); }
+/* Slim scrollbars that fit the surface instead of the browser default. */
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 9999px; }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+/* Pill buttons, as in the reference design: hairline border, medium weight, fully rounded. */
+.btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-strong); background: var(--panel); color: var(--fg); padding: 5px 14px; border-radius: 9999px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background-color .15s, border-color .15s, color .15s; }
+.btn:hover:not(:disabled) { background: var(--panel2); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.btn-primary:hover:not(:disabled) { background: var(--accent-strong); border-color: var(--accent-strong); }
+.btn-deep { background: var(--fill); border-color: var(--fill); color: var(--on-fill); }
+.btn-deep:hover:not(:disabled) { background: var(--fill-alt); border-color: var(--fill-alt); }
+.btn-danger { color: var(--crit); }
+/* The call-to-action pill with an arrow disc that is the inverse of the button, so it reads on every level. */
+.btn-cta { padding: 5px 6px 5px 16px; font-size: 14px; }
+.btn-cta .disc { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 9999px; background: var(--accent-fg); color: var(--accent); font-size: 13px; transition: transform .15s; }
+.btn-cta:hover:not(:disabled) .disc { transform: translateX(2px); }
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 9999px; color: var(--fg2); transition: background-color .15s, color .15s; cursor: pointer; }
+.icon-btn:hover { background: var(--panel2); color: var(--deep); }
+.input { border: 1px solid var(--line-strong); background: var(--panel); padding: 6px 12px; border-radius: 12px; width: 100%; }
+.input:focus-visible { outline-offset: 0; border-color: var(--deep); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 1px 2px rgba(6, 34, 50, .05); }
+/* Tabs: pill segments, the active one a solid deep fill. */
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.tab { border-radius: 9999px; padding: 6px 14px; font-size: 13.5px; font-weight: 700; color: var(--fg2); cursor: pointer; transition: background-color .15s, color .15s; }
+.tab:hover { background: var(--panel2); color: var(--deep); }
+.tab[aria-selected="true"], .tab[aria-pressed="true"] { background: var(--fill); color: var(--on-fill); }
+.chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid currentColor; border-radius: 9999px; padding: 1px 9px; font-size: 11.5px; font-weight: 600; line-height: 1.5; white-space: nowrap; }
+/* Accordion header: a full-width button that reads as a row, with an icon tile, title, hint and chevron. */
+.accordion-head { display: flex; width: 100%; align-items: center; gap: 14px; padding: 14px 20px; text-align: left; cursor: pointer; transition: background-color .15s; }
+.accordion-head:hover { background: var(--panel2); }
+.accordion-icon { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 12px; background: var(--fill); color: var(--on-fill); }
+/* The Brody wordmark. The "o" is a ring with a centre dot, echoing the code-map mark. Sized in em so it scales with the text. */
+.wordmark { font-family: var(--brand); font-weight: 700; font-size: 25px; line-height: 1; letter-spacing: -0.045em; color: var(--deep); white-space: nowrap; }
+/* Unbounded's own lowercase "o" is 0.604em tall (x-height 0.571em plus overshoot). The ring is sized to match it exactly, so it sits on the baseline and reaches the same height as the letters beside it. */
+.wordmark-o { position: relative; display: inline-block; width: .53em; height: .53em; margin: 0 .05em 0 .02em; border: .125em solid #fff; border-radius: 9999px; vertical-align: .02em; box-sizing: border-box; /* a fine edge in the text colour keeps the white ring visible on light surfaces, where white alone would vanish */ box-shadow: 0 0 0 .035em var(--deep), inset 0 0 0 .035em var(--deep); }
+.wordmark-o::after { content: ""; position: absolute; inset: 50% auto auto 50%; width: .18em; height: .18em; margin: -.09em 0 0 -.09em; border-radius: 9999px; background: var(--accent); }
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tbl th { text-align: left; font-weight: 700; color: var(--muted); font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase; padding: 9px 12px; border-bottom: 1px solid var(--line); background: var(--panel2); position: sticky; top: 0; }
+.tbl td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.tbl tr:last-child td { border-bottom: 0; }
+.tbl tr:hover td { background: color-mix(in srgb, var(--panel2) 55%, transparent); }
+.h-label { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.prose-doc { font-family: var(--document); font-size: 15.5px; line-height: 1.7; }
+.prose-doc p { margin: 0 0 .8em; max-width: 78ch; }
+.prose-doc ul { margin: 0 0 .8em 1.2em; list-style: disc; }
+.src-line:hover { background: color-mix(in srgb, var(--accent-soft) 60%, transparent); }
+.src-hl { background: color-mix(in srgb, var(--med) 22%, transparent); }
+.splitter { width: 5px; cursor: col-resize; background: transparent; flex: none; }
+.splitter:hover, .splitter.active { background: var(--accent); opacity: .5; }
+.animate-in { animation: fade-in-up .22s ease-out; }
+/* ---- In-progress elements ------------------------------------------------------------------------------------
+ * .spinner        a turning ring for any inline wait
+ * button[aria-busy="true"]   any button marked busy shows a ring before its label and stays legible while disabled
+ * .progress       a bar; the fill carries a moving highlight while work is running, and .indeterminate slides when the
+ *                 amount of work is unknown
+ * .dots           three pulsing dots for a "thinking" line
+ * Reduced motion slows the rotation instead of removing it, because a frozen ring reads as a hung page.
+ */
+.spinner { display: inline-block; flex: none; width: 1em; height: 1em; border-radius: 9999px; border: 2px solid currentColor; border-right-color: transparent; animation: spin .75s linear infinite; vertical-align: -0.15em; }
+.btn[aria-busy="true"] { cursor: progress; }
+.btn[aria-busy="true"]:disabled { opacity: .9; }
+.btn[aria-busy="true"]::before { content: ""; flex: none; width: 13px; height: 13px; border-radius: 9999px; border: 2px solid currentColor; border-right-color: transparent; animation: spin .75s linear infinite; }
+.btn-cta[aria-busy="true"] { padding-right: 16px; }
+.btn-cta[aria-busy="true"] .disc { display: none; }
+.progress { position: relative; height: 8px; overflow: hidden; border-radius: 9999px; border: 1px solid var(--line); background: var(--panel2); }
+.progress > .bar { position: relative; height: 100%; overflow: hidden; border-radius: inherit; background: var(--accent); transition: width .5s ease; }
+.progress.running > .bar::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 45%; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .5), transparent); animation: shimmer 1.5s ease-in-out infinite; }
+.progress.indeterminate > .bar { width: 38%; animation: slide 1.3s ease-in-out infinite; }
+.dots { display: inline-flex; gap: 3px; vertical-align: middle; }
+.dots i { width: 5px; height: 5px; border-radius: 9999px; background: currentColor; animation: pulse-dot 1.2s ease-in-out infinite; }
+.dots i:nth-child(2) { animation-delay: .2s; }
+.dots i:nth-child(3) { animation-delay: .4s; }
+/* The brightness slider: a track that previews the five backgrounds, and a thumb that is unmistakably a control on any of them. */
+.level-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 12px; border-radius: 9999px; border: 1px solid var(--line-strong); background: linear-gradient(to right, var(--swatch-bright), var(--swatch-original), var(--swatch-default), var(--swatch-dark), var(--swatch-darkest)); cursor: pointer; }
+.level-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 26px; height: 26px; border-radius: 9999px; background: var(--fill); border: 4px solid var(--panel); box-shadow: 0 0 0 1.5px var(--deep), 0 2px 6px rgba(0, 0, 0, .3); cursor: grab; }
+.level-slider::-moz-range-thumb { width: 18px; height: 18px; border-radius: 9999px; background: var(--fill); border: 4px solid var(--panel); box-shadow: 0 0 0 1.5px var(--deep), 0 2px 6px rgba(0, 0, 0, .3); cursor: grab; }
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(230%); } }
+@keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(270%); } }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+@keyframes fade-in-up { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+/* Cross-fade the colours when the brightness level changes; never for readers who prefer reduced motion. */
+.theme-fade, .theme-fade *, .theme-fade *::before, .theme-fade *::after { transition: background-color .28s ease, color .28s ease, border-color .28s ease, fill .28s ease, stroke .28s ease !important; }
+
+@media print { header, aside, .no-print { display: none !important; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .spinner, .btn[aria-busy="true"]::before { animation: spin 2.4s linear infinite !important; }
+  .dots i { animation: pulse-dot 2.4s ease-in-out infinite !important; }
+  .progress.indeterminate > .bar { width: 100%; opacity: .45; }
 }
