@@ -12,7 +12,9 @@ ready-made reports. Three ways to use it:
       export" (or choose it under Select your code). No re-analysis is run.
    b. Or double-click the launcher for your system in this folder, after
       unzipping it:
-        macOS:    "Open in Brody.command"   (first time: right-click, Open)
+        macOS:    "Open in Brody.command"   (first time: right-click, Open; if macOS
+                  still refuses, open Terminal and run:  bash "Open in Brody.command"
+                  from inside this folder)
         Linux:    open-in-brody.sh
         Windows:  "Open in Brody.bat"
       The launcher sends this export to the Brody running at http://brody:3003
@@ -40,29 +42,65 @@ export const LAUNCHER_SH = `#!/bin/bash
 # Brody must be running (start it with:  brody start).
 # To use another address:  BRODY_URL=http://host:3003 ./open-in-brody.sh
 cd "$(dirname "$0")" || exit 1
-CANDIDATES="\${BRODY_URL:-http://brody:3003 http://localhost:3003}"
+CANDIDATES="\${BRODY_URL:-http://brody:3003 http://localhost:3003 http://127.0.0.1:3003}"
 TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
 ZIP="$TMP/brody-export.zip"
-if ! command -v zip >/dev/null 2>&1; then
-  echo "The 'zip' command is needed to send this export to Brody."
-  read -r -p "Press Enter to close"; exit 1
+
+# Keep the window open on failure when this was started by a double-click.
+finish() { [ -t 0 ] && read -r -p "Press Enter to close" _; exit "$1"; }
+
+for TOOL in zip curl; do
+  command -v "$TOOL" >/dev/null 2>&1 || { echo "The '$TOOL' command is needed to send this export to Brody."; finish 1; }
+done
+if ! zip -qr "$ZIP" . -x "*.DS_Store"; then
+  echo "Could not package this folder. On macOS, allow Terminal to read it under"
+  echo "System Settings > Privacy & Security > Files and Folders (or move the folder out of Downloads/Desktop)."
+  finish 1
 fi
-zip -qr "$ZIP" . -x "*.DS_Store"
+
+# Prints the HTTP status (000 when nothing answered). \$1 = address, \$2 = optional Host name to present.
+send() {
+  if [ -n "$2" ]; then
+    curl -sS --connect-timeout 5 --max-time 600 -H "Host: $2" -F "file=@$ZIP" -o "$TMP/resp" -w '%{http_code}' "$1/api/projects/import-bundle" 2>"$TMP/err"
+  else
+    curl -sS --connect-timeout 5 --max-time 600 -F "file=@$ZIP" -o "$TMP/resp" -w '%{http_code}' "$1/api/projects/import-bundle" 2>"$TMP/err"
+  fi
+}
+
 for URL in $CANDIDATES; do
   echo "Sending this export to $URL ..."
-  if RESP="$(curl -fsS --max-time 600 -F "file=@$ZIP" "$URL/api/projects/import-bundle" 2>/dev/null)"; then
-    ID="$(printf '%s' "$RESP" | sed -n 's/.*"id":"\\(prj_[0-9a-f]*\\)".*/\\1/p' | head -n1)"
+  NAME=""
+  CODE="$(send "$URL" "")"
+  if [ "$CODE" = "421" ]; then
+    # Brody only answers to one host name (ALLOWED_HOSTS) and says which; present that name, even when reached as localhost.
+    NAME="$(sed -n 's|^This app is served only at http://\\([^:/]*\\).*|\\1|p' "$TMP/resp" | head -n1)"
+    if [ -n "$NAME" ]; then echo "  Brody only answers to the name '$NAME'; retrying as that."; CODE="$(send "$URL" "$NAME")"; fi
+  fi
+  if [ "$CODE" = "201" ]; then
+    ID="$(grep -o '"id":"prj_[0-9a-f]*"' "$TMP/resp" | head -n1 | cut -d'"' -f4)"
     if [ -n "$ID" ]; then
-      echo "Imported. Opening $URL/p/$ID"
-      (open "$URL/p/$ID" 2>/dev/null || xdg-open "$URL/p/$ID" 2>/dev/null)
-      rm -rf "$TMP"; exit 0
+      OPEN_URL="$URL"
+      if [ -n "$NAME" ]; then
+        OPEN_URL="$(printf '%s' "$URL" | sed -E "s|^(https?://)[^:/]+|\\\\1$NAME|")"
+        echo "  If the page does not load, add this line to /etc/hosts:  127.0.0.1 $NAME"
+      fi
+      echo "Imported. Opening $OPEN_URL/p/$ID"
+      (open "$OPEN_URL/p/$ID" 2>/dev/null || xdg-open "$OPEN_URL/p/$ID" 2>/dev/null)
+      exit 0
     fi
+  fi
+  if [ "$CODE" = "000" ]; then
+    echo "  No answer: $(tr '\\n' ' ' <"$TMP/err")"
+  else
+    MSG="$(sed -n 's/.*"message":"\\([^"]*\\)".*/\\1/p' "$TMP/resp" | head -n1)"
+    echo "  Brody answered $CODE\${MSG:+: $MSG}"
   fi
 done
 echo
 echo "Could not import into Brody. Is it running? Start it with:  brody start"
 echo "If it runs at another address, set BRODY_URL and try again."
-rm -rf "$TMP"; read -r -p "Press Enter to close"; exit 1
+finish 1
 `;
 
 // tar.exe (Windows 10 and later) writes a standard ZIP; PowerShell's Compress-Archive can write backslash paths that Brody rejects.

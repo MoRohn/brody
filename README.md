@@ -90,7 +90,7 @@ The Markdown report follows a fixed order (Executive Summary → … → Recomme
 To open it:
 
 * **In the interface:** on the home page open **Open a Brody export** and choose the zip, or simply drop it on the ordinary ZIP upload. The project appears with the full interface (review, explain, map, files, ask, export) and is marked *imported*. Nothing is re-analysed, so it works on any Brody, even one with no AI key.
-* **One double-click:** unzip it and run `Open in Brody.command` (macOS; the first time, right-click and choose Open), `open-in-brody.sh` (Linux) or `Open in Brody.bat` (Windows, untested). The launcher sends the export to the Brody running at `http://brody:3003` (or `http://localhost:3003`; set `BRODY_URL` for another address) and opens the imported project in your browser.
+* **One double-click:** unzip it and run `Open in Brody.command` (macOS; the first time, right-click and choose Open. If macOS still refuses it, open Terminal, `cd` into the unzipped folder and run `bash "Open in Brody.command"`), `open-in-brody.sh` (Linux) or `Open in Brody.bat` (Windows, untested). The launcher sends the export to the Brody running at `http://brody:3003` (or `http://localhost:3003`; set `BRODY_URL` for another address) and opens the imported project in your browser.
 * **Without Brody:** open `reports/Report.html`, `reports/Report.pdf` or `reports/Report.docx`.
 
 Importing always makes a new project with new ids, so the same file can be imported more than once. Bundles are validated before anything is written, and an invalid or hostile file is refused whole. The API is `GET /api/projects/:id/export?format=bundle` and `POST /api/projects/import-bundle`.

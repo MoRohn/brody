@@ -266,6 +266,49 @@ describe("Brody bundle: the one-click launcher", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  it.skipIf(!hasTools)("retries as the allowed host name when Brody refuses the address (ALLOWED_HOSTS), and opens that name", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "brody-launch3-"));
+    const files = unzipSync(new Uint8Array(bundle));
+    for (const [name, data] of Object.entries(files)) { const p = path.join(dir, "export", name); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, data); }
+    const hosts: string[] = [];
+    // Like the real host allow-list in src/proxy.ts: only the name "brody" is served.
+    const server = http.createServer((req, res) => {
+      hosts.push((req.headers.host ?? "").split(":")[0]);
+      if ((req.headers.host ?? "").split(":")[0] !== "brody") { res.writeHead(421, { "content-type": "text/plain" }); res.end("This app is served only at http://brody:3003\n"); return; }
+      req.on("data", () => undefined);
+      req.on("end", () => { res.writeHead(201, { "content-type": "application/json" }); res.end(JSON.stringify({ project: { id: "prj_0123456789abcdef0123", name: "x" }, imported: true })); });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as { port: number }).port;
+    const bin = path.join(dir, "bin");
+    fs.mkdirSync(bin);
+    for (const b of ["open", "xdg-open"]) fs.writeFileSync(path.join(bin, b), `#!/bin/sh\necho "$1" > "${dir}/opened.txt"\n`, { mode: 0o755 });
+    const script = path.join(dir, "export", "Open in Brody.command");
+    fs.chmodSync(script, 0o755);
+    const r = await spawnSyncAsync("bash", [script], { env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, BRODY_URL: `http://127.0.0.1:${port}` } });
+    server.close();
+    expect(r.status, r.out).toBe(0);
+    expect(hosts).toEqual(["127.0.0.1", "brody"]); // refused as addressed, accepted as "brody"
+    expect(fs.readFileSync(path.join(dir, "opened.txt"), "utf8").trim()).toBe(`http://brody:${port}/p/prj_0123456789abcdef0123`);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it.skipIf(!hasTools)("shows why Brody refused the export instead of a bare 'is it running?'", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "brody-launch4-"));
+    const files = unzipSync(new Uint8Array(bundle));
+    fs.mkdirSync(path.join(dir, "export"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "export", "manifest.json"), files["manifest.json"]);
+    fs.writeFileSync(path.join(dir, "export", "open-in-brody.sh"), files["open-in-brody.sh"], { mode: 0o755 });
+    const server = http.createServer((req, res) => { req.resume(); req.on("end", () => { res.writeHead(400, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { code: "invalid_bundle", message: "This bundle was made by a newer Brody." } })); }); });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as { port: number }).port;
+    const r = await spawnSyncAsync("bash", [path.join(dir, "export", "open-in-brody.sh")], { env: { ...process.env, BRODY_URL: `http://127.0.0.1:${port}` }, input: "\n" });
+    server.close();
+    expect(r.status).toBe(1);
+    expect(r.out).toContain("Brody answered 400: This bundle was made by a newer Brody.");
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   it.skipIf(!hasTools)("reports a clear problem, and exits non-zero, when Brody is not running", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "brody-launch2-"));
     const files = unzipSync(new Uint8Array(bundle));
