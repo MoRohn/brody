@@ -37,7 +37,7 @@ describe("executive deck: the pipeline step", () => {
   it("stores its content with the analysis, beside the report's data", () => {
     const p = getDb().select().from(schema.projects).where(eq(schema.projects.id, pid)).get()!;
     const stored = (p.analysis as { deck?: DeckContent; docs?: unknown; architecture?: unknown }).deck!;
-    expect(stored.version).toBe(2);
+    expect(stored.version).toBe(3);
     expect((p.analysis as { docs?: unknown }).docs).toBeTruthy();
     expect(JSON.stringify(stored).length).toBeLessThan(60_000); // a compact snapshot, not a copy of the report
   });
@@ -45,12 +45,13 @@ describe("executive deck: the pipeline step", () => {
   it("rebuilds a snapshot saved by an older deck version instead of failing on it", () => {
     const p = getDb().select().from(schema.projects).where(eq(schema.projects.id, pid)).get()!;
     const analysis = p.analysis as { deck: Record<string, unknown> };
-    const stale: Record<string, unknown> = { ...analysis.deck, version: 1 };
-    delete stale.scorecard;
+    const stale: Record<string, unknown> = { ...analysis.deck, version: 2 };
+    delete stale.overview;
     getDb().update(schema.projects).set({ analysis: { ...analysis, deck: stale } }).where(eq(schema.projects.id, pid)).run();
     const fresh: DeckContent = ensureDeckContent(pid);
-    expect(fresh.version).toBe(2);
+    expect(fresh.version).toBe(3);
     expect(fresh.scorecard.length).toBe(6);
+    expect(fresh.overview.business).toHaveLength(3);
     expect(layoutDeck(fresh).slides.length).toBe(14);
   });
 
@@ -99,6 +100,37 @@ describe("executive deck: one set of facts with the report", () => {
   });
 });
 
+describe("executive deck: the summary and the two lenses", () => {
+  it("opens with one summary slide that speaks to the business and to engineering, then names the first move", () => {
+    const deck = deckSlides(pid);
+    expect(deck.slides[1].id).toBe("summary");
+    const text = slideText(deck.slides[1]).join(" ");
+    expect(text).toMatch(/For the business/i);
+    expect(text).toMatch(/For engineering/i);
+    expect(text).toMatch(/First move/i);
+    expect(content.overview.business).toHaveLength(3);
+    expect(content.overview.engineering).toHaveLength(3);
+    for (const p of [...content.overview.business, ...content.overview.engineering]) { expect(p.value.length).toBeGreaterThan(0); expect(p.detail.length).toBeGreaterThan(5); }
+    expect(deck.slides[1].notes).toMatch(/For the business:.*For engineering:.*First move:/);
+  });
+
+  it("agrees with the rest of the deck and the report", () => {
+    const { findings } = loadReportData(pid);
+    const serious = findings.filter((f) => ["Critical", "High"].includes(f.severity)).length;
+    const p = content.overview.business[2];
+    expect(p.value).toBe(String(serious));
+    expect(content.overview.engineering[1].value).toBe(`${content.scorecard.filter((d) => d.status === "good").length} of ${content.scorecard.length}`);
+    expect(content.overview.engineering[2].value).toBe(`${content.testing.readiness.filter((r) => r.ok).length} of ${content.testing.readiness.length}`);
+  });
+
+  it("groups every slide between the title and the appendix under a lens, business first, then engineering, then the plan", () => {
+    const body = deckSlides(pid).slides.filter((s) => !["title", "summary", "coverage"].includes(s.id));
+    const lens = body.map((s) => s.kicker.split(" · ")[0]);
+    expect(lens.every((l) => ["Business", "Engineering", "Action"].includes(l))).toBe(true);
+    expect(lens.join(",")).toMatch(/^(Business,)+(Engineering,)+Action$/);
+  });
+});
+
 describe("executive deck: rating and scorecard", () => {
   it("rates the system by the same rule as the report's executive summary", () => {
     const { docs, findings } = loadReportData(pid);
@@ -115,7 +147,7 @@ describe("executive deck: rating and scorecard", () => {
     expect(sec.sev.critical + sec.sev.high + sec.sev.medium + sec.sev.low).toBe(findings.filter((f) => f.category === "Security" && ["Critical", "High", "Medium", "Low"].includes(f.severity)).length);
     expect(sec.status).toBe(sec.sev.critical > 0 ? "act" : sec.sev.high > 0 || sec.sev.medium >= 3 ? "watch" : "good");
     for (const d of content.scorecard) expect(d.evidence.length, d.key).toBeGreaterThan(5);
-    const text = slideText(deckSlides(pid).slides[2]).join(" ");
+    const text = slideText(deckSlides(pid).slides.find((x) => x.id === "scorecard")!).join(" ");
     expect(text).toMatch(/On track|Watch|Needs attention/);
   });
 
@@ -202,12 +234,13 @@ describe("executive deck: layout", () => {
       ...content, capabilities: [], flows: [], integrations: [], actions: [],
       data: { models: 0, relations: 0, stores: [], entities: [] },
       architecture: { pattern: "Small script", lanes: [], links: [], foundation: [] },
+      overview: { business: [], engineering: [], firstMove: "Nothing is urgent." },
       scorecard: [], quality: { total: 0, level: "good" as const, verdict: "No issues were found by the analysis.", strengths: [], severity: [{ label: "Critical", count: 0 }, { label: "High", count: 0 }, { label: "Medium", count: 0 }, { label: "Low", count: 0 }], themes: [], areaRisk: [], priorities: [] },
       testing: { files: 0, frameworks: [], coverage: [], untestedCritical: 0, readiness: [] },
     };
     const deck = layoutDeck(empty);
     expect(deck.slides).toHaveLength(14);
-    expect(slideText(deck.slides[10]).join(" ")).toMatch(/No serious issues|No findings/);
+    expect(slideText(deck.slides.find((x) => x.id === "priorities")!).join(" ")).toMatch(/No serious issues|No findings/);
   });
 
   it("copes with long names and large numbers", () => {

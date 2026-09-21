@@ -17,16 +17,20 @@ import { exposureFor, firstSentence, humanizeFlow, isExecutiveWording, issueFor,
 export type Risk = "none" | "low" | "medium" | "high" | "critical";
 /** good: on track, watch: sound with gaps, act: needs attention. */
 export type Status = "good" | "watch" | "act";
+/** One line of the summary: a short figure, what it measures, and a sentence of evidence. */
+export interface OverviewPoint { value: string; label: string; detail: string; status?: Status }
 export interface Sev { critical: number; high: number; medium: number; low: number }
 
 export interface DeckContent {
-  version: 2;
+  version: 3;
   generatedAt: number;
   origin: "deterministic" | "ai";
   project: { name: string; source?: string; branch?: string; commit?: string };
   headline: string;
   summary: string;
   kpis: { label: string; value: string; note?: string }[];
+  /** The one-page summary: what it means for the business, what it means for the team that builds it, and the first move. */
+  overview: { business: OverviewPoint[]; engineering: OverviewPoint[]; firstMove: string };
   keyPoints: { title: string; detail: string }[];
   capabilities: { name: string; line: string; files: number; risk: Risk; role: string; usedBy: number }[];
   architecture: {
@@ -271,14 +275,42 @@ export function buildDeckContent(projectId: string): DeckContent {
   });
   const level: Status = statusOf(total);
 
+  // ---- the one-page summary: the same facts, framed for the business and for engineering -------------------------------------
+  const seriousCount = total.critical + total.high;
+  const nameList = (xs: string[]) => xs.join(", ").replace(/, ([^,]*)$/, " and $1");
+  const topIssue = priorities[0];
+  const areaTotal = brief.metrics.find((m) => m.label === "Functional areas")?.value ?? String(capabilities.length);
+  const worst = scorecard.filter((d) => d.status === "act"), watching = scorecard.filter((d) => d.status === "watch");
+  const onTrack = scorecard.filter((d) => d.status === "good").length;
+  const missing = readiness.filter((r) => !r.ok).map((r) => r.label);
+  const firstAction = capped.find((a) => a.priority === "Now") ?? capped[0];
+  const overview: DeckContent["overview"] = {
+    business: [
+      { value: areaTotal, label: "Capabilities it delivers", detail: capabilities.length ? `Led by ${nameList(capabilities.slice(0, 3).map((a) => a.name))}.` : "No distinct capabilities were identified." },
+      integrations.length
+        ? { value: String(integrations.length), label: integrations.length === 1 ? "Outside service it relies on" : "Outside services it relies on", detail: `${nameList(integrations.slice(0, 3).map((i) => i.name))}. If ${integrations[0].name} is unavailable: ${integrations[0].ifDown.replace(/\.$/, "").replace(/^(\w)/, (m) => m.toLowerCase())}.` }
+        : { value: "0", label: "Outside services it relies on", detail: "It runs on its own, so a partner outage cannot stop it." },
+      seriousCount
+        ? { value: String(seriousCount), label: seriousCount === 1 ? "Serious issue to resolve" : "Serious issues to resolve", detail: topIssue ? `Biggest: ${topIssue.issue.charAt(0).toLowerCase()}${topIssue.issue.slice(1)}. ${topIssue.exposure}` : `${total.critical} critical and ${total.high} high.`, status: total.critical ? "act" : "watch" }
+        : { value: "0", label: "Serious issues", detail: live.length ? `${plural(live.length, "smaller finding")} to tidy up over time.` : "Nothing serious was found.", status: "good" },
+    ],
+    engineering: [
+      { value: (stats.sourceFiles ?? 0).toLocaleString(), label: "Source files to maintain", detail: `${sentence(arch.pattern.label)}${frameworks.length ? `, built with ${nameList(frameworks.slice(0, 3))}` : ""}; ${(stats.lines ?? 0).toLocaleString()} lines, mostly ${topLang[0]?.name ?? "one language"}.` },
+      { value: `${onTrack} of ${scorecard.length}`, label: "Health checks on track", detail: worst.length ? `Needs attention: ${nameList(worst.map((d) => d.name.toLowerCase()))}.${watching.length ? ` To watch: ${nameList(watching.map((d) => d.name.toLowerCase()))}.` : ""}` : watching.length ? `To watch: ${nameList(watching.map((d) => d.name.toLowerCase()))}.` : "No area needs attention.", status: worst.length ? "act" : watching.length ? "watch" : "good" },
+      { value: `${readiness.length - missing.length} of ${readiness.length}`, label: "Delivery basics in place", detail: missing.length ? `Not yet in place: ${missing.slice(0, 2).map((m) => m.charAt(0).toLowerCase() + m.slice(1)).join("; ")}${missing.length > 2 ? `; ${missing.length - 2} more` : ""}.` : `${plural(arch.tests.files.length, "automated test file")}, and the checks that keep releases safe are in place.`, status: missing.length > 2 ? "act" : missing.length ? "watch" : "good" },
+    ],
+    firstMove: firstAction ? `${firstAction.action}.` : "Nothing is urgent; keep the current routine and revisit after the next major change.",
+  };
+
   return {
-    version: 2,
+    version: 3,
     generatedAt: Date.now(),
     origin: brief.origin,
     project: { name: project.name, source: project.sourceUrl ?? undefined, branch: project.branch ?? undefined, commit: project.commit ? project.commit.slice(0, 10) : undefined },
     headline: firstSentence(brief.headline.replace(new RegExp(`^${project.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:\\s*`), ""), 170),
     summary: plainText(brief.summary),
     kpis: brief.metrics.map((m) => ({ label: m.label, value: m.value, note: kpiNote(m.label) })),
+    overview,
     keyPoints: [
       { title: "How it is built", detail: `${sentence(arch.pattern.label)}${frameworks.length ? `, built with ${frameworks.slice(0, 3).join(", ").replace(/, ([^,]*)$/, " and $1")}` : ""}. ${(stats.sourceFiles ?? 0).toLocaleString()} source files, mostly ${topLang[0]?.name ?? "one language"}.` },
       { title: "What it does", detail: `${brief.metrics.find((m) => m.label === "Functional areas")?.value ?? capabilities.length} functional areas, led by ${capabilities.slice(0, 3).map((a) => a.name).join(", ").replace(/, ([^,]*)$/, " and $1") || "its main capabilities"}.` },
@@ -307,7 +339,7 @@ export function ensureDeckContent(projectId: string): DeckContent {
   const db = getDb();
   const p = db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get();
   const stored = (p?.analysis as { deck?: DeckContent } | null)?.deck;
-  if (stored?.version === 2) return stored;
+  if (stored?.version === 3) return stored;
   const deck = buildDeckContent(projectId);
   saveDeckContent(projectId, deck);
   return deck;

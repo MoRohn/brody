@@ -34,12 +34,17 @@ function refText(c: DeckContent, ...keys: string[]): string {
   return keys.map((k) => c.refs.find((r) => r.key === k)).filter((r): r is NonNullable<typeof r> => !!r).map((r) => `§${r.n} ${r.title}`).join(" · ");
 }
 
+/** Slides belong to a lens, named in the kicker ("Business · ...", "Engineering · ..."), and are tinted to match. */
+const LENS_COLOR = { Business: C.accent, Engineering: "#5B4B9A", Action: C.good } as const;
+const lensColor = (kicker: string): string => LENS_COLOR[kicker.split(" · ")[0] as keyof typeof LENS_COLOR] ?? C.accent;
+
 /** The page frame: accent tick, kicker, and the action title. The footer is added once page numbers are known. */
 function frame(id: string, kicker: string, title: string, ref: string, notes: string): { cv: Canvas; done: () => Slide } {
   const cv = new Canvas();
   cv.rect(0, 0, W, H, { fill: C.white });
-  cv.rect(X, 42, 34, 4, { fill: C.accent, r: 2 });
-  cv.text(kicker.toUpperCase(), X + 46, 34, 600, 20, { size: 13, color: C.accent, bold: true, spacing: 1.8, maxLines: 1, valign: "m" });
+  const tint = lensColor(kicker);
+  cv.rect(X, 42, 34, 4, { fill: tint, r: 2 });
+  cv.text(kicker.toUpperCase(), X + 46, 34, 600, 20, { size: 13, color: tint, bold: true, spacing: 1.8, maxLines: 1, valign: "m" });
   cv.text("BRODY", W - X - 120, 34, 120, 20, { size: 13, color: C.muted, bold: true, spacing: 3, align: "r", maxLines: 1, valign: "m" });
   cv.fit(title, X, 60, CW, 88, { size: 33, min: 24, color: C.navy, bold: true, font: "serif", lh: 41, maxLines: 2 });
   return { cv, done: () => ({ id, title, kicker, ref: ref || undefined, notes, prims: cv.prims }) };
@@ -114,32 +119,50 @@ function titleSlide(c: DeckContent): Slide {
   return { id: "title", title: c.project.name, kicker: "Executive summary", notes: `Executive summary of ${c.project.name}. ${c.headline} This deck and the Repository Intelligence Report are two views of one analysis: every slide names the report section that holds the detail.`, dark: true, prims: cv.prims };
 }
 
-function bottomLineSlide(c: DeckContent): Slide {
-  const q = c.quality, n = serious(c);
+/** As many whole sentences as fit in `max` characters (the first one always stays), so a cut never lands mid-sentence. */
+function wholeSentences(t: string, max: number): string {
+  const parts = t.match(/[^.!?]+[.!?]+(?:\s|$)/g) ?? [t];
+  let out = "";
+  for (const p of parts) { if (out && (out + p).length > max) break; out += p; }
+  return out.trim() || t;
+}
+
+function summarySlide(c: DeckContent): Slide {
+  const q = c.quality, n = serious(c), o = c.overview;
   const title = q.level === "act" ? `${plural(n, "serious issue")} need attention before this system can be relied on`
     : q.level === "watch" ? `Sound overall, with ${plural(n || q.total, n ? "serious issue" : "finding")} worth fixing soon` : "In good shape: no serious issues were found";
-  const { cv, done } = frame("summary", "The bottom line", title, refText(c, "exec"), `${c.headline} ${c.summary} ${q.verdict} Detail: ${refText(c, "exec")}.`);
-  // Left: the verdict, on a dark card.
-  cv.rect(X, TOP, 500, 496, { fill: C.deep, r: 22 });
-  cv.rect(X, TOP, 500, 496, { fill: C.accent, r: 22, opacity: 0.18 });
+  const { cv, done } = frame("summary", "Executive summary", title, refText(c, "exec"), `${c.headline} ${c.summary} ${q.verdict} For the business: ${o.business.map((p) => `${p.value} ${p.label.toLowerCase()}. ${p.detail}`).join(" ")} For engineering: ${o.engineering.map((p) => `${p.value} ${p.label.toLowerCase()}. ${p.detail}`).join(" ")} First move: ${o.firstMove} Detail: ${refText(c, "exec")}.`);
+  // Left: the verdict, what the system is, and the first move, on a dark card.
+  const lw = 420, lh = 496;
+  cv.rect(X, TOP, lw, lh, { fill: C.deep, r: 22 });
+  cv.rect(X, TOP, lw, lh, { fill: C.accent, r: 22, opacity: 0.18 });
   cv.rect(X + 32, TOP + 32, 8, 8, { fill: STATUS_COLOR[q.level], r: 4 });
-  cv.text(STATUS_LABEL[q.level].toUpperCase(), X + 48, TOP + 24, 380, 24, { size: 14, color: q.level === "act" ? "#FF9A8F" : q.level === "watch" ? "#FFD27A" : "#8FE0B0", bold: true, spacing: 2, valign: "m", maxLines: 1 });
-  cv.fit(c.headline, X + 32, TOP + 68, 436, 230, { size: 29, min: 21, color: C.white, bold: true, font: "serif", lh: 38, maxLines: 6 });
-  cv.rect(X + 32, TOP + 326, 60, 3, { fill: "#7CCBEE", r: 1.5 });
-  cv.text(c.summary, X + 32, TOP + 348, 436, 130, { size: 16, color: "#C9DCE8", lh: 24, maxLines: 5 });
-  // Right: four takeaways.
-  const next = c.actions.find((a) => a.priority === "Now") ?? c.actions[0];
-  const rows: { icon: string; color: string; title: string; detail: string }[] = [
-    ...c.keyPoints.slice(0, 3).map((k, i) => ({ icon: ["layers", "target", q.level === "good" ? "shield" : "alert"][i], color: [C.accent, "#2C6E8F", STATUS_COLOR[q.level]][i], title: k.title, detail: k.detail })),
-    ...(next ? [{ icon: "list", color: C.good, title: "What to do first", detail: next.action }] : []),
+  cv.text(STATUS_LABEL[q.level].toUpperCase(), X + 48, TOP + 24, 300, 24, { size: 14, color: q.level === "act" ? "#FF9A8F" : q.level === "watch" ? "#FFD27A" : "#8FE0B0", bold: true, spacing: 2, valign: "m", maxLines: 1 });
+  cv.fit(c.headline, X + 32, TOP + 60, lw - 64, 170, { size: 27, min: 19, color: C.white, bold: true, font: "serif", lh: 35, maxLines: 6 });
+  cv.rect(X + 32, TOP + 244, 60, 3, { fill: "#7CCBEE", r: 1.5 });
+  cv.text(wholeSentences(c.summary, 230), X + 32, TOP + 262, lw - 64, 96, { size: 15, color: "#C9DCE8", lh: 22, maxLines: 4 });
+  cv.rect(X + 32, TOP + 378, lw - 64, 1, { fill: "#FFFFFF", opacity: 0.16 });
+  cv.text("FIRST MOVE", X + 32, TOP + 392, lw - 64, 20, { size: 12, color: "#7CCBEE", bold: true, spacing: 2, maxLines: 1, valign: "m" });
+  cv.text(o.firstMove, X + 32, TOP + 416, lw - 64, 68, { size: 16, color: C.white, bold: true, lh: 22, maxLines: 3 });
+  // Right: two panels, one per lens, three lines each.
+  const rx = X + lw + 28, rw = CW - lw - 28, ph = 236;
+  const panels: { lens: keyof typeof LENS_COLOR; title: string; sub: string; points: DeckContent["overview"]["business"] }[] = [
+    { lens: "Business", title: "For the business", sub: "What it delivers, depends on and puts at risk", points: o.business },
+    { lens: "Engineering", title: "For engineering", sub: "How it is built, how healthy it is, how safely it ships", points: o.engineering },
   ];
-  const rx = X + 528, rw = CW - 528, rh = (496 - 16 * (rows.length - 1)) / Math.max(1, rows.length);
-  rows.forEach((r, i) => {
-    const y = TOP + i * (rh + 16);
-    cv.card(rx, y, rw, rh, { shadow: true });
-    cv.icon(r.icon, rx + 46, y + rh / 2, 24, r.color);
-    cv.text(r.title, rx + 92, y + 16, rw - 116, 26, { size: 19, color: C.navy, bold: true, maxLines: 1 });
-    cv.text(r.detail, rx + 92, y + 46, rw - 116, rh - 58, { size: 16, color: C.muted, lh: 23, maxLines: 3 });
+  panels.forEach((p, pi) => {
+    const y0 = TOP + pi * (ph + 24), tint = LENS_COLOR[p.lens];
+    cv.card(rx, y0, rw, ph, { shadow: true, accent: tint });
+    cv.text(p.title.toUpperCase(), rx + 28, y0 + 18, 220, 22, { size: 13, color: tint, bold: true, spacing: 1.8, maxLines: 1, valign: "m" });
+    cv.text(p.sub, rx + 250, y0 + 18, rw - 278, 22, { size: 13, color: C.muted, align: "r", maxLines: 1, valign: "m" });
+    p.points.slice(0, 3).forEach((pt, i) => {
+      const y = y0 + 46 + i * 62;
+      if (i > 0) cv.rect(rx + 28, y - 5, rw - 56, 1, { fill: C.rule });
+      const color = pt.status ? STATUS_COLOR[pt.status] : C.navy;
+      cv.fit(pt.value, rx + 28, y, 132, 52, { size: 30, min: 18, color, bold: true, font: "serif", maxLines: 1, valign: "m" });
+      cv.text(pt.label, rx + 176, y, rw - 204, 22, { size: 15, color: C.navy, bold: true, maxLines: 1, valign: "m" });
+      cv.text(pt.detail, rx + 176, y + 23, rw - 204, 34, { size: 13, color: C.muted, lh: 17, maxLines: 2 });
+    });
   });
   return done();
 }
@@ -149,7 +172,7 @@ function scorecardSlide(c: DeckContent): Slide {
   const watch = c.scorecard.filter((d) => d.status === "watch").map((d) => DIM_SHORT[d.key]);
   const title = acts.length ? `${list(acts)} ${acts.length > 1 ? "need" : "needs"} attention${watch.length ? `; ${list(watch).toLowerCase()} to watch` : ""}`
     : watch.length ? `${list(watch)} to watch; everything else is on track` : "All six health checks are on track";
-  const { cv, done } = frame("scorecard", "Health scorecard", title, refText(c, "review", "risks"), `Six health checks an executive would ask about, each rated from the same findings the report lists: On track, Watch or Needs attention. Detail: ${refText(c, "review", "risks")}.`);
+  const { cv, done } = frame("scorecard", "Engineering · Health scorecard", title, refText(c, "review", "risks"), `Six health checks an executive would ask about, each rated from the same findings the report lists: On track, Watch or Needs attention. Detail: ${refText(c, "review", "risks")}.`);
   const gap = 20, w = (CW - gap * 2) / 3, h = 240;
   c.scorecard.forEach((d, i) => {
     const x = X + (i % 3) * (w + gap), y = TOP + Math.floor(i / 3) * (h + 16);
@@ -178,7 +201,7 @@ function scorecardSlide(c: DeckContent): Slide {
 function numbersSlide(c: DeckContent): Slide {
   const get = (l: string) => c.kpis.find((k) => k.label === l)?.value ?? "0";
   const title = `${get("Functional areas")} functional areas across ${get("Source files")} source files${serious(c) ? `, with ${plural(serious(c), "serious issue")} to resolve` : ""}`;
-  const { cv, done } = frame("glance", "By the numbers", title, refText(c, "glance"), `The system spans ${plural(c.coverage.sourceFiles, "source file")} and ${get("Lines of code")} lines of code. ${c.quality.verdict} Detail: ${refText(c, "glance")}.`);
+  const { cv, done } = frame("glance", "Business · By the numbers", title, refText(c, "glance"), `The system spans ${plural(c.coverage.sourceFiles, "source file")} and ${get("Lines of code")} lines of code. ${c.quality.verdict} Detail: ${refText(c, "glance")}.`);
   const gap = 18, w = (CW - gap * 3) / 4, h = 236;
   c.kpis.slice(0, 8).forEach((m, i) => {
     const x = X + (i % 4) * (w + gap), y = TOP + Math.floor(i / 4) * (h + 24);
@@ -199,7 +222,7 @@ function capabilitiesSlide(c: DeckContent): Slide {
   const share = Math.min(1, caps.reduce((a, x) => a + x.files, 0) / total);
   const areaCount = c.kpis.find((k) => k.label === "Functional areas")?.value;
   const title = caps.length >= 2 ? `The ${caps.length} largest${areaCount ? ` of ${areaCount}` : ""} functional areas hold ${pct(share)} of the code` : "What the system does";
-  const { cv, done } = frame("capabilities", "What the system does", title, refText(c, "areas"), `${caps.length} main capabilities, led by ${caps.slice(0, 3).map((a) => a.name).join(", ")}. Bars show each one's share of the analysed files; a risk tag appears where the review found serious issues. Detail: ${refText(c, "areas")}.`);
+  const { cv, done } = frame("capabilities", "Business · What it does", title, refText(c, "areas"), `${caps.length} main capabilities, led by ${caps.slice(0, 3).map((a) => a.name).join(", ")}. Bars show each one's share of the analysed files; a risk tag appears where the review found serious issues. Detail: ${refText(c, "areas")}.`);
   const maxFiles = Math.max(1, ...caps.map((a) => a.files));
   const gap = 18, w = (CW - gap) / 2, h = 112;
   caps.forEach((a, i) => {
@@ -222,7 +245,7 @@ function capabilitiesSlide(c: DeckContent): Slide {
 function architectureSlide(c: DeckContent): Slide {
   const lanes = c.architecture.lanes.filter((l) => l.areas.length > 0);
   const title = lanes.length ? `Organised in ${lanes.length} layers, from where people enter to the services it relies on` : "How the system is organised";
-  const { cv, done } = frame("architecture", "How it is built", title, refText(c, "arch", "codemap"), `${c.architecture.pattern}. Read left to right: people and systems come in on the left, business rules are in the middle, information is stored and outside services are on the right. Arrows show how strongly layers are connected. Detail: ${refText(c, "arch", "codemap")}.`);
+  const { cv, done } = frame("architecture", "Engineering · How it is built", title, refText(c, "arch", "codemap"), `${c.architecture.pattern}. Read left to right: people and systems come in on the left, business rules are in the middle, information is stored and outside services are on the right. Arrows show how strongly layers are connected. Detail: ${refText(c, "arch", "codemap")}.`);
   const laneH = c.architecture.foundation.length ? 372 : 420;
   const n = Math.max(1, lanes.length), gap = 48, lw = (CW - gap * (n - 1)) / n;
   const centers: { id: string; x: number; w: number }[] = [];
@@ -270,7 +293,7 @@ function technologySlide(c: DeckContent): Slide {
   const top = c.tech.languages[0];
   const fw = c.tech.frameworks.slice(0, 2);
   const title = top ? `Mostly ${top.name} (${pct(top.share)})${fw.length ? `, built on ${list(fw)}` : ""}` : "What the system is made of";
-  const { cv, done } = frame("technology", "Technology and footprint", title, refText(c, "glance", "arch"), `The code is mainly ${c.tech.languages.slice(0, 2).map((l) => l.name).join(" and ")}. It is ${c.tech.footprint[0]?.value ?? ""} source files and ${c.tech.footprint[1]?.value ?? ""} lines. Detail: ${refText(c, "glance", "arch")}.`);
+  const { cv, done } = frame("technology", "Engineering · Technology", title, refText(c, "glance", "arch"), `The code is mainly ${c.tech.languages.slice(0, 2).map((l) => l.name).join(" and ")}. It is ${c.tech.footprint[0]?.value ?? ""} source files and ${c.tech.footprint[1]?.value ?? ""} lines. Detail: ${refText(c, "glance", "arch")}.`);
   const palette = [C.navy, C.accent, "#3F7F6E", "#8A5A9E", C.med, C.info];
   cv.card(X, TOP, 520, 496, { shadow: true });
   cv.text("Languages by share of code", X + 28, TOP + 22, 460, 26, { size: 17, color: C.navy, bold: true, maxLines: 1 });
@@ -311,7 +334,7 @@ function technologySlide(c: DeckContent): Slide {
 function flowsSlide(c: DeckContent): Slide {
   const flows = c.flows.slice(0, 4);
   const avg = flows.length ? Math.round((flows.reduce((a, f) => a + f.path.length, 0) / flows.length) * 10) / 10 : 0;
-  const { cv, done } = frame("flows", "How work moves", flows.length ? `${plural(flows.length, "key activity").replace("activitys", "activities")}, each crossing about ${avg} parts of the system` : "How work moves through the system", refText(c, "flows", "runtime"), `Each row traces a real activity through the parts of the system that handle it, ending at any outside service it reaches. Detail: ${refText(c, "flows", "runtime")}.`);
+  const { cv, done } = frame("flows", "Business · How work moves", flows.length ? `${plural(flows.length, "key activity").replace("activitys", "activities")}, each crossing about ${avg} parts of the system` : "How work moves through the system", refText(c, "flows", "runtime"), `Each row traces a real activity through the parts of the system that handle it, ending at any outside service it reaches. Detail: ${refText(c, "flows", "runtime")}.`);
   if (!flows.length) {
     cv.text("No end-to-end activities were traced. The layered view on the architecture slide shows how the parts connect.", X, TOP + 10, CW, 60, { size: 18, color: C.muted });
     return done();
@@ -342,7 +365,7 @@ function flowsSlide(c: DeckContent): Slide {
 
 function dataSlide(c: DeckContent): Slide {
   const title = `${plural(c.data.models, "data model")} and ${plural(c.integrations.length, "outside service")} power the system`;
-  const { cv, done } = frame("data", "Information and partners", title, refText(c, "data", "integrations"), `${plural(c.data.models, "data model")} with ${plural(c.data.relations, "relationship")} between them. The system relies on ${plural(c.integrations.length, "outside service")}; the last column shows the business effect if one is unavailable. Detail: ${refText(c, "data", "integrations")}.`);
+  const { cv, done } = frame("data", "Business · Data and partners", title, refText(c, "data", "integrations"), `${plural(c.data.models, "data model")} with ${plural(c.data.relations, "relationship")} between them. The system relies on ${plural(c.integrations.length, "outside service")}; the last column shows the business effect if one is unavailable. Detail: ${refText(c, "data", "integrations")}.`);
   const lw = 440;
   const tiles: [string, string, string][] = [["Data models", String(c.data.models), "data"], ["Relationships", String(c.data.relations), "layers"], ["Data stores", String(c.data.stores.length), "box"]];
   const tw = (lw - 24) / 3;
@@ -368,7 +391,7 @@ function dataSlide(c: DeckContent): Slide {
 function riskSlide(c: DeckContent): Slide {
   const q = c.quality, s = q.severity;
   const title = `${plural(q.total, "finding")}: ${s[0].count + s[1].count} serious, ${s[2].count} moderate, ${s[3].count} minor`;
-  const { cv, done } = frame("risk", "Risk posture", title, refText(c, "review", "risks"), `${q.verdict} ${plural(q.total, "finding")} in total. Themes on the right group the findings by the kind of exposure they create. Detail: ${refText(c, "review", "risks")}.`);
+  const { cv, done } = frame("risk", "Business · Risk exposure", title, refText(c, "review", "risks"), `${q.verdict} ${plural(q.total, "finding")} in total. Themes on the right group the findings by the kind of exposure they create. Detail: ${refText(c, "review", "risks")}.`);
   cv.card(X, TOP, 400, 496, { shadow: true });
   const cx = X + 200, cy = TOP + 190, r = 122;
   const colors = [C.crit, C.high, C.med, C.low];
@@ -410,7 +433,7 @@ function prioritiesSlide(c: DeckContent): Slide {
   const q = c.quality;
   const first = q.priorities[0];
   const title = first ? `Fix first: ${lower(first.issue)}${q.priorities.length > 1 ? `, and ${q.priorities.length - 1} more` : ""}` : "No serious issues to fix first";
-  const { cv, done } = frame("priorities", "Priority issues", title, refText(c, "review", "risks"), `The left chart shows which parts of the system carry the most findings. The table lists the issues to act on first, in business terms, with the reference number used in the report. Detail: ${refText(c, "review", "risks")}.`);
+  const { cv, done } = frame("priorities", "Engineering · Priority issues", title, refText(c, "review", "risks"), `The left chart shows which parts of the system carry the most findings. The table lists the issues to act on first, in business terms, with the reference number used in the report. Detail: ${refText(c, "review", "risks")}.`);
   const lw = 400;
   cv.card(X, TOP, lw, 496, { shadow: true });
   cv.text("Findings by part of the system", X + 26, TOP + 20, lw - 40, 26, { size: 17, color: C.navy, bold: true, maxLines: 1 });
@@ -448,7 +471,7 @@ function testingSlide(c: DeckContent): Slide {
   const covered = t.coverage.filter((a) => a.total > 0 && a.tested / a.total >= 0.5).length;
   const missing = t.readiness.filter((r) => !r.ok).length;
   const title = t.coverage.length ? `${covered} of ${t.coverage.length} areas are well covered by tests; ${missing ? `${plural(missing, "basic")} still missing` : "the basics are in place"}` : missing ? `${plural(missing, "quality basic")} still missing` : "Quality basics are in place";
-  const { cv, done } = frame("testing", "Quality assurance and readiness", title, refText(c, "testing"), `${plural(t.files, "automated test file")}. Coverage bars show how many of the important files in each part of the system are exercised by tests. The checklist is derived from the same findings as the report. Detail: ${refText(c, "testing")}.`);
+  const { cv, done } = frame("testing", "Engineering · Quality and readiness", title, refText(c, "testing"), `${plural(t.files, "automated test file")}. Coverage bars show how many of the important files in each part of the system are exercised by tests. The checklist is derived from the same findings as the report. Detail: ${refText(c, "testing")}.`);
   const lw = 560;
   cv.card(X, TOP, lw, 496, { shadow: true });
   cv.text("Test coverage by part of the system", X + 26, TOP + 20, lw - 40, 26, { size: 17, color: C.navy, bold: true, maxLines: 1 });
@@ -482,7 +505,7 @@ function testingSlide(c: DeckContent): Slide {
 function actionsSlide(c: DeckContent): Slide {
   const now = c.actions.filter((a) => a.priority === "Now").length;
   const title = now ? `${now} ${now === 1 ? "action" : "actions"} to start now will remove the most serious exposure` : c.actions.length ? "Nothing is urgent; here is what to plan" : "No actions are needed right now";
-  const { cv, done } = frame("actions", "Recommended actions", title, refText(c, "recs"), `Actions are grouped by urgency: Now addresses the most serious exposure, Next follows, Later is worth planning. Each shows why it matters and the reference used in the report. Detail: ${refText(c, "recs")}.`);
+  const { cv, done } = frame("actions", "Action · Recommended plan", title, refText(c, "recs"), `Actions are grouped by urgency: Now addresses the most serious exposure, Next follows, Later is worth planning. Each shows why it matters and the reference used in the report. Detail: ${refText(c, "recs")}.`);
   const cols: ("Now" | "Next" | "Later")[] = ["Now", "Next", "Later"];
   const gap = 20, w = (CW - gap * 2) / 3;
   const desc = { Now: "Start immediately", Next: "Within the quarter", Later: "Plan and schedule" };
@@ -526,7 +549,10 @@ function coverageSlide(c: DeckContent, all: Slide[]): Slide {
 
 /** Lay the whole deck out. Footers (project, report reference, page number) are added last, when the page count is known. */
 export function layoutDeck(c: DeckContent): DeckSlides {
-  const slides: Slide[] = [titleSlide(c), bottomLineSlide(c), scorecardSlide(c), numbersSlide(c), capabilitiesSlide(c), architectureSlide(c), technologySlide(c), flowsSlide(c), dataSlide(c), riskSlide(c), prioritiesSlide(c), testingSlide(c), actionsSlide(c)];
+  const slides: Slide[] = [titleSlide(c), summarySlide(c),
+    numbersSlide(c), capabilitiesSlide(c), flowsSlide(c), dataSlide(c), riskSlide(c),
+    scorecardSlide(c), architectureSlide(c), technologySlide(c), testingSlide(c), prioritiesSlide(c),
+    actionsSlide(c)];
   slides.push(coverageSlide(c, slides));
   const total = slides.length;
   slides.forEach((s, i) => {

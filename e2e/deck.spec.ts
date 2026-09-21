@@ -35,7 +35,7 @@ test("the executive deck: a pipeline step, a page with a live preview, and three
   await frame.locator(".slide.on svg").click(); // focus the preview so it receives the keys
   await page.keyboard.press("ArrowRight");
   await expect(frame.locator("#count")).toHaveText("2 / 14");
-  await expect(frame.locator(".slide.on")).toContainText(/the bottom line/i);
+  await expect(frame.locator(".slide.on")).toContainText(/for the business/i);
   await page.keyboard.press("o");
   await expect(frame.locator(".slide").first()).toBeVisible();
   if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await page.screenshot({ path: path.join(SHOTS, "deck-page.png") }); }
