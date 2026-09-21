@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Brody launcher.   brody start | stop | restart | status | logs | open
-# Builds the app when needed, runs it in the background and waits until it is healthy.
+# Brody launcher.   brody start | stop | restart | status | logs | open   (start and restart open the browser; add --no-open to skip)
+# Builds the app when needed, runs it in the background, waits until it is healthy and opens it in your browser.
 
 set -uo pipefail
 
@@ -37,9 +37,33 @@ needs_build() {
   return 1
 }
 
+# Opens Brody in the default browser once it is ready. Skipped with --no-open or BRODY_OPEN=0; BRODY_BROWSER overrides the opener.
+open_browser() {
+  [ "${BRODY_OPEN:-1}" = "0" ] && return 0
+  if ! name_resolves; then
+    say "Not opening the browser: '$HOST_NAME' does not resolve yet (see the note above), so the page would not load."
+    return 0
+  fi
+  local opener="${BRODY_BROWSER:-}"
+  if [ -z "$opener" ]; then
+    if command -v open >/dev/null 2>&1; then opener="open"
+    elif command -v xdg-open >/dev/null 2>&1; then opener="xdg-open"
+    elif command -v wslview >/dev/null 2>&1; then opener="wslview"
+    else say "Open $URL in your browser."; return 0; fi
+  fi
+  # Load the home page once so the browser opens on a page that is already warm.
+  curl -fsS -m 10 -H "Host: $HOST_NAME" "http://127.0.0.1:$PORT/" >/dev/null 2>&1
+  "$opener" "$URL" >/dev/null 2>&1 || say "Could not open a browser automatically. Open $URL yourself."
+}
+
 name_resolves() { dscacheutil -q host -a name "$HOST_NAME" 2>/dev/null | grep -q "127.0.0.1" || grep -qE "^[^#]*\b$HOST_NAME\b" /etc/hosts 2>/dev/null; }
 
 cmd_start() {
+  start_server || return $?
+  open_browser
+}
+
+start_server() {
   if healthy; then say "Brody is already running at $URL"; return 0; fi
   if [ -n "$(listener_pid)" ]; then fail "port $PORT is in use by another program (pid $(listener_pid)). Stop it or set PORT=<other port>."; fi
   command -v node >/dev/null || fail "Node.js is not installed (version 24 or newer is required)."
@@ -78,13 +102,15 @@ cmd_status() {
   if healthy; then say "Brody is running: $URL (pid $(listener_pid))"; else say "Brody is not running."; return 1; fi
 }
 
+for arg in "$@"; do [ "$arg" = "--no-open" ] && BRODY_OPEN=0; done
+
 case "${1:-start}" in
   start) cmd_start ;;
   stop) cmd_stop ;;
   restart) cmd_stop; cmd_start ;;
   status) cmd_status ;;
   logs) tail -n "${2:-50}" -f "$LOG_FILE" ;;
-  open) cmd_start && open "$URL" ;;
+  open) BRODY_OPEN=1; cmd_start ;;
   -h|--help|help) sed -n '2,3p' "$0" | sed 's/^# \{0,1\}//' ;;
-  *) fail "unknown command '$1'. Use: start | stop | restart | status | logs | open" ;;
+  *) fail "unknown command '$1'. Use: start | stop | restart | status | logs | open  (add --no-open to start/restart to skip the browser)" ;;
 esac

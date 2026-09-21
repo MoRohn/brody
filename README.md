@@ -13,8 +13,9 @@ An LLM never receives "the whole repo". It reasons over structured repository kn
 ### Start Brody with one command
 
 ```bash
-start brody      # builds if needed, launches in the background, prints http://brody:3003
-brody stop       # also: brody status | restart | logs | open
+start brody      # builds if needed, launches in the background, then opens http://brody:3003 in your browser
+brody stop       # also: brody status | restart | logs | open   (restart opens the browser too)
+start brody --no-open   # start or restart without opening a browser (or set BRODY_OPEN=0)
 ```
 
 `start brody` and `brody` are small commands in `~/.local/bin` that point at `scripts/brody.sh`. To install them on another machine:
