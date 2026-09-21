@@ -50,6 +50,16 @@ export interface ParsedInheritance {
   kind: "EXTENDS" | "IMPLEMENTS";
 }
 
+/** A TypeScript parser diagnostic for one file. */
+export interface SyntaxDiag { line: number; message: string }
+/** One ESLint message, trimmed to what the finding needs. */
+export interface LintMessage { ruleId: string | null; fatal: boolean; message: string; line: number; endLine?: number; severity: number }
+/**
+ * Per-file static checks computed beside the parse (in the same worker) and cached with it. A field is absent when that
+ * check was not run for the file, so consumers fall back to running it themselves.
+ */
+export interface FileChecks { syntax?: SyntaxDiag[]; lint?: { ok: boolean; messages: LintMessage[] } }
+
 export interface ParsedFile {
   status: "ast" | "text" | "skipped";
   parser: string;
@@ -65,6 +75,8 @@ export interface ParsedFile {
   error?: string;
   /** Rough complexity: count of branching constructs per symbol index. */
   complexity: Map<number, number>;
+  /** Static checks computed alongside the parse; see FileChecks. */
+  checks?: FileChecks;
 }
 
 export function emptyParse(status: ParsedFile["status"], parser: string, error?: string): ParsedFile {

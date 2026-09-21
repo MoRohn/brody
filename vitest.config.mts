@@ -7,7 +7,8 @@ export default defineConfig({
   test: {
     environment: "node",
     // Never read the developer's real AI selections (data/ai-settings.json) during tests.
-    env: { AI_SETTINGS_PATH: path.join(os.tmpdir(), "brody-vitest-ai-settings-unused.json") },
+    // Worker threads are exercised by tests/workers.test.ts; everything else parses in-process so the suite stays fast and simple.
+    env: { PARSE_WORKERS: "0", AI_SETTINGS_PATH: path.join(os.tmpdir(), "brody-vitest-ai-settings-unused.json") },
     include: ["tests/**/*.test.ts"],
     testTimeout: 60_000,
     hookTimeout: 60_000,

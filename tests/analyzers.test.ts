@@ -27,6 +27,18 @@ describe("static analyzer adapters (deterministic, never AI)", () => {
     expect(findings.every((f) => f.origin === "static")).toBe(true);
   });
 
+  it("ESLint checks TypeScript and JSX files too, in nested folders (a universal files pattern silently skipped them)", async () => {
+    const bad = "const o = { a: 1, a: 2 };\nif (x === NaN) {}\nexport {};\n";
+    for (const [path, lang] of [["src/deep/a.ts", "TypeScript"], ["src/b.tsx", "TypeScript"], ["c.mts", "TypeScript"], ["src/d.jsx", "JavaScript"], ["e.cjs", "JavaScript"]] as const) {
+      const { findings, status } = await runEslint([lf(path, lang, bad)]);
+      expect(status.status, path).toBe("ran");
+      expect(findings.map((f) => f.analyzer), path).toEqual(expect.arrayContaining(["eslint/no-dupe-keys", "eslint/use-isnan"]));
+    }
+    // A finding is never reported for a file the linter could not match (those come back without a rule id).
+    const none = await runEslint([lf("notes.txt", "Text", bad)]);
+    expect(none.status.status).toBe("skipped");
+  });
+
   it("Python: ast.parse catches syntax errors without executing code; Ruff runs isolated when installed", async () => {
     const marker = "/tmp/brody-should-not-exist-" + Date.now();
     const { findings, statuses } = await runPython([

@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { getDb, schema } from "../db/client";
+import { bulkInsert, getDb, schema, projectRows } from "../db/client";
 import type { FileRow, FindingRow, RelationshipRow, SymbolRow } from "../db/schema";
 import { getFileContents } from "../ingest/store";
 import { getAIProvider } from "../ai";
@@ -68,7 +68,7 @@ export function invalidateIndex(projectId: string): void {
 export async function buildSearchIndex(projectId: string, opts: { embed?: boolean } = {}): Promise<{ entries: number; embedded: number }> {
   const db = getDb();
   const files = db.select().from(schema.files).where(and(eq(schema.files.projectId, projectId), eq(schema.files.isExcluded, false))).all();
-  const symbols = db.select().from(schema.symbols).where(eq(schema.symbols.projectId, projectId)).all();
+  const symbols = projectRows(schema.symbols, projectId);
   const rows: (typeof schema.indexEntries.$inferInsert)[] = [];
   const symsByFile = new Map<string, SymbolRow[]>();
   for (const s of symbols) { const l = symsByFile.get(s.fileId) ?? []; l.push(s); symsByFile.set(s.fileId, l); }
@@ -97,7 +97,7 @@ export async function buildSearchIndex(projectId: string, opts: { embed?: boolea
   db.transaction((tx) => {
     tx.delete(schema.indexEntries).where(and(eq(schema.indexEntries.projectId, projectId), eq(schema.indexEntries.kind, "file"))).run();
     tx.delete(schema.indexEntries).where(and(eq(schema.indexEntries.projectId, projectId), eq(schema.indexEntries.kind, "symbol"))).run();
-    for (let i = 0; i < rows.length; i += 200) tx.insert(schema.indexEntries).values(rows.slice(i, i + 200)).run();
+    bulkInsert(schema.indexEntries, rows);
   });
   invalidateIndex(projectId);
   return { entries: rows.length, embedded };
@@ -106,7 +106,7 @@ export async function buildSearchIndex(projectId: string, opts: { embed?: boolea
 /** Add findings and generated documentation sections to the search index. */
 export function indexFindingsAndDocs(projectId: string, docs: { id: string; title: string; text: string; path?: string }[]): void {
   const db = getDb();
-  const findings = db.select().from(schema.findings).where(eq(schema.findings.projectId, projectId)).all();
+  const findings = projectRows(schema.findings, projectId);
   db.transaction((tx) => {
     tx.delete(schema.indexEntries).where(and(eq(schema.indexEntries.projectId, projectId), eq(schema.indexEntries.kind, "finding"))).run();
     tx.delete(schema.indexEntries).where(and(eq(schema.indexEntries.projectId, projectId), eq(schema.indexEntries.kind, "doc"))).run();
@@ -117,7 +117,7 @@ export function indexFindingsAndDocs(projectId: string, docs: { id: string; titl
       rows.push({ projectId, kind: "finding", refId: f.id, filePath: f.filePath, title: `${f.code} ${f.title}`, terms: [...tokenize(f.title), ...tokenize(f.category), ...tokenize(f.severity), ...tokenize(f.filePath ?? ""), ...tokenize(f.whatHappens).slice(0, 40)].join(" "), text: text.slice(0, 1200), embedding: null });
     }
     for (const d of docs) rows.push({ projectId, kind: "doc", refId: d.id, filePath: d.path ?? null, title: d.title, terms: [...tokenize(d.title), ...tokenize(d.text).slice(0, 300)].join(" "), text: d.text.slice(0, 1500), embedding: null });
-    for (let i = 0; i < rows.length; i += 200) tx.insert(schema.indexEntries).values(rows.slice(i, i + 200)).run();
+    bulkInsert(schema.indexEntries, rows);
   });
   invalidateIndex(projectId);
 }
@@ -127,10 +127,10 @@ function load(projectId: string): IndexCache {
   const stamp = db.select({ u: schema.projects.updatedAt }).from(schema.projects).where(eq(schema.projects.id, projectId)).get()?.u ?? 0;
   const hit = cache.get(projectId);
   if (hit && hit.stamp === stamp) return hit;
-  const rows = db.select().from(schema.indexEntries).where(eq(schema.indexEntries.projectId, projectId)).all();
-  const files = new Map(db.select().from(schema.files).where(eq(schema.files.projectId, projectId)).all().map((f) => [f.id, f]));
-  const symbols = new Map(db.select().from(schema.symbols).where(eq(schema.symbols.projectId, projectId)).all().map((s) => [s.id, s]));
-  const findings = new Map(db.select().from(schema.findings).where(eq(schema.findings.projectId, projectId)).all().map((f) => [f.id, f]));
+  const rows = projectRows(schema.indexEntries, projectId);
+  const files = new Map(projectRows(schema.files, projectId).map((f) => [f.id, f]));
+  const symbols = new Map(projectRows(schema.symbols, projectId).map((s) => [s.id, s]));
+  const findings = new Map(projectRows(schema.findings, projectId).map((f) => [f.id, f]));
   const filesByPath = new Map([...files.values()].map((f) => [f.path, f]));
   const entries: Entry[] = rows.map((r) => {
     const kind = r.kind as HitKind;
@@ -251,7 +251,7 @@ export async function search(projectId: string, query: string, opts: RetrievalOp
   const top = scored.filter((s) => s.kind === "symbol").slice(0, 5);
   if (top.length && (!opts.kinds || opts.kinds.includes("symbol"))) {
     if (!idx.adj) {
-      const rels = getDb().select().from(schema.relationships).where(eq(schema.relationships.projectId, projectId)).all();
+      const rels = projectRows(schema.relationships, projectId);
       const adj = new Map<string, { id: string; w: number }[]>();
       for (const r of rels) {
         if (r.targetType !== "symbol" || r.sourceType !== "symbol") continue;
@@ -324,10 +324,9 @@ export interface ContextBundle {
 
 /** Turn ranked hits into source excerpts with real line ranges. */
 export async function retrieveContext(projectId: string, query: string, opts: { charBudget?: number; maxItems?: number; filters?: SearchFilters } = {}): Promise<ContextBundle> {
-  const db = getDb();
   const hits = await search(projectId, query, { ...opts.filters, limit: 24, includeCode: true });
-  const files = new Map(db.select().from(schema.files).where(eq(schema.files.projectId, projectId)).all().map((f) => [f.path, f]));
-  const symbols = new Map(db.select().from(schema.symbols).where(eq(schema.symbols.projectId, projectId)).all().map((s) => [s.id, s]));
+  const files = new Map(projectRows(schema.files, projectId).map((f) => [f.path, f]));
+  const symbols = new Map(projectRows(schema.symbols, projectId).map((s) => [s.id, s]));
   const hashes = new Set<string>();
   for (const h of hits) { const f = h.path ? files.get(h.path) : undefined; if (f) hashes.add(f.hash); }
   const contents = getFileContents([...hashes]);

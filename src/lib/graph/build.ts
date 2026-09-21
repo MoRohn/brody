@@ -1,9 +1,13 @@
-import { eq, and } from "drizzle-orm";
-import { getDb, schema } from "../db/client";
+import { eq } from "drizzle-orm";
+import { bulkInsert, bulkUpdate, getDb, schema, projectRows } from "../db/client";
 import type { FileRow } from "../db/schema";
 import { getFileContents } from "../ingest/store";
-import { parseFile, type ParsedFile } from "../parse";
-import { getCachedParse, parseCacheKey, putCachedParse } from "../parse/cache";
+import { type FileChecks, type ParsedFile } from "../parse";
+import { existingParseKeys, getCachedParses, parseCacheKey, putCachedParses } from "../parse/cache";
+import { poolInfo, parseMany, type PoolInfo } from "../parse/pool";
+import { runParseJob } from "../parse/run";
+import { lintTargets, syntaxTargets } from "../analysis/checkcore";
+import { config } from "../config";
 import { newId } from "../util/ids";
 import { externalPackageName, readPathAliases, resolveImport } from "./resolve";
 import { maxOf } from "../util/arrays";
@@ -18,6 +22,10 @@ export interface BuildResult {
   symbols: number;
   relationships: number;
   errors: { path: string; error: string }[];
+  /** Per-file static checks computed with the parse; handed to the static-analysis stage so it does not repeat them. */
+  checks: Map<string, FileChecks>;
+  /** How parsing ran (worker threads or in-process, and why). */
+  mode?: PoolInfo;
 }
 
 export interface LoadedFile extends FileRow {
@@ -53,8 +61,7 @@ const READ_VERBS = /^(find|findOne|findMany|findUnique|findFirst|findAll|findByI
 
 /** Load included, text-bearing files for a project along with content. */
 export function loadProjectFiles(projectId: string, opts: { includeExcluded?: boolean } = {}): LoadedFile[] {
-  const db = getDb();
-  const rows = db.select().from(schema.files).where(eq(schema.files.projectId, projectId)).all();
+  const rows = projectRows(schema.files, projectId);
   const wanted = rows.filter((r) => (opts.includeExcluded || !r.isExcluded) && r.hasContent && !r.isBinary);
   const contents = getFileContents(wanted.map((r) => r.hash));
   return rows.map((r) => ({ ...r, text: wanted.includes(r) ? contents.get(r.hash) : undefined }));
@@ -67,7 +74,8 @@ export async function buildGraph(projectId: string, onProgress?: (done: number, 
   const filesByPath = new Map(allFiles.map((f) => [f.path, f]));
   const pathSet = new Set(allFiles.filter((f) => !f.isExcluded).map((f) => f.path));
   const aliases = readPathAliases(filesByPath);
-  const result: BuildResult = { parsed: 0, reused: 0, astParsed: 0, textParsed: 0, skipped: 0, symbols: 0, relationships: 0, errors: [] };
+  const checks = new Map<string, FileChecks>();
+  const result: BuildResult = { parsed: 0, reused: 0, astParsed: 0, textParsed: 0, skipped: 0, symbols: 0, relationships: 0, errors: [], checks };
 
   // Clean previous graph data for this project (re-analysis).
   db.delete(schema.symbols).where(eq(schema.symbols.projectId, projectId)).run();
@@ -76,16 +84,45 @@ export async function buildGraph(projectId: string, onProgress?: (done: number, 
   const parsed = new Map<string, ParsedFile>();
   let done = 0;
   onPhase?.("parse");
+
+  // Work out up front which files need parsing at all (a key-only query), so a mostly cached repository never starts
+  // workers and a cold one hands the whole set to the pool at once.
+  const keyOf = new Map(files.map((f) => [f.path, parseCacheKey(f.language, f.path, f.hash)]));
+  const cachedKeys = existingParseKeys([...keyOf.values()]);
+  const toParse = files.filter((f) => !cachedKeys.has(keyOf.get(f.path)!));
+  // The per-file static checks are computed beside the parse (in the worker) for exactly the files the analyzers would cover.
+  const withSyntax = config.staticAnalysis.enabled ? new Set(syntaxTargets(files).map((f) => f.path)) : new Set<string>();
+  const withLint = config.staticAnalysis.enabled ? new Set(lintTargets(files).map((f) => f.path)) : new Set<string>();
+  const reusedUpFront = files.length - toParse.length;
+  const outputs = await parseMany(
+    toParse.map((f) => ({ path: f.path, language: f.language, source: f.text!, syntax: withSyntax.has(f.path), lint: withLint.has(f.path) })),
+    { onProgress: (n) => onProgress?.(reusedUpFront + n, files.length) },
+  );
+  const fresh = new Map(toParse.map((f, i) => [f.path, outputs[i]]));
+  result.mode = poolInfo();
+
+  // Cache lookups and writes are batched: one query and one transaction per chunk instead of one autocommit per file.
+  const CHUNK = 200;
+  let cached = new Map<string, ParsedFile>();
+  let pending: { key: string; parsed: ParsedFile }[] = [];
+  const flushCache = () => { if (pending.length) { putCachedParses(pending); pending = []; } };
   for (const f of files) {
     try {
-      const key = parseCacheKey(f.language, f.path, f.hash);
-      let p = getCachedParse(key);
+      if (done % CHUNK === 0) {
+        flushCache();
+        cached = getCachedParses(files.slice(done, done + CHUNK).map((x) => keyOf.get(x.path)!));
+      }
+      const key = keyOf.get(f.path)!;
+      let p = cached.get(key);
       if (p) result.reused++;
       else {
-        p = await parseFile(f.path, f.language, f.text!);
-        if (p.status !== "skipped" || f.language !== "Unknown") putCachedParse(key, p);
+        const out = fresh.get(f.path) ?? (await runParseJob({ path: f.path, language: f.language, source: f.text!, syntax: withSyntax.has(f.path), lint: withLint.has(f.path) }));
+        if (!out.parsed) throw new Error(out.error ?? "parse failed");
+        p = out.parsed;
+        if (p.status !== "skipped" || f.language !== "Unknown") pending.push({ key, parsed: p });
       }
       parsed.set(f.path, p);
+      if (p.checks) checks.set(f.path, p.checks);
       if (p.status === "ast") result.astParsed++;
       else if (p.status === "text") result.textParsed++;
       else result.skipped++;
@@ -97,10 +134,11 @@ export async function buildGraph(projectId: string, onProgress?: (done: number, 
     done++;
     if (done % 25 === 0) {
       onProgress?.(done, files.length);
-      // Yield so the HTTP server stays responsive while parsing large repositories.
+      // Yield so the HTTP server stays responsive while the results are consumed.
       await new Promise<void>((r) => setImmediate(r));
     }
   }
+  flushCache();
   onProgress?.(files.length, files.length);
   onPhase?.("graph");
 
@@ -297,24 +335,24 @@ export async function buildGraph(projectId: string, onProgress?: (done: number, 
   }
 
   const importanceById = new Map(symbolRows.map((r) => [r.id, r.importance ?? 0]));
-  db.transaction((tx) => {
-    for (let i = 0; i < symbolRows.length; i += 200) tx.insert(schema.symbols).values(symbolRows.slice(i, i + 200)).run();
-    const relRows = rels.map((r) => ({ id: newId("rel"), projectId, kind: r.kind, sourceType: r.sourceType, sourceId: r.sourceId, targetType: r.targetType, targetId: r.targetId, filePath: r.filePath ?? null, line: r.line ?? null, confidence: r.confidence, meta: r.meta ?? null }));
-    for (let i = 0; i < relRows.length; i += 200) tx.insert(schema.relationships).values(relRows.slice(i, i + 200)).run();
-    for (const f of files) {
+  db.transaction(() => {
+    bulkInsert(schema.symbols, symbolRows);
+    bulkInsert(schema.relationships, rels.map((r) => ({ id: newId("rel"), projectId, kind: r.kind, sourceType: r.sourceType, sourceId: r.sourceId, targetType: r.targetType, targetId: r.targetId, filePath: r.filePath ?? null, line: r.line ?? null, confidence: r.confidence, meta: r.meta ?? null })));
+    bulkUpdate(schema.files, ["id", "projectId"], ["imports", "exports", "parseStatus", "parseError", "module", "importance"], files.map((f) => {
       const p = parsed.get(f.path);
       const fileImp = importance.get(f.id) ?? 0;
       let symImp = 0;
       for (const sr of symsByFile.get(f.path) ?? []) symImp = Math.max(symImp, importanceById.get(sr.id) ?? 0);
-      tx.update(schema.files).set({
+      return {
+        id: f.id, projectId,
         imports: [...(fileImports.get(f.path) ?? [])],
         exports: p?.exports.slice(0, 200) ?? [],
         parseStatus: p ? (p.status === "ast" ? "ast" : p.status === "text" ? "text" : "skipped") : "error",
         parseError: p?.error ?? null,
         module: f.directory || ".",
         importance: Math.min(1, fileImp * 0.7 + symImp * 0.3 + (inbound.get(f.id) ?? 0) * 0.01),
-      }).where(and(eq(schema.files.id, f.id), eq(schema.files.projectId, projectId))).run();
-    }
+      };
+    }));
   });
 
   result.symbols = symbolRows.length;
@@ -324,30 +362,42 @@ export async function buildGraph(projectId: string, onProgress?: (done: number, 
 
 /** Simplified PageRank over the relationship graph; returns scores normalized to [0,1]. */
 export function computeImportance(rels: RelDraft[], nodeIds: string[], iterations = 20): Map<string, number> {
-  const nodes = new Set(nodeIds);
-  const out = new Map<string, string[]>();
+  // Nodes are numbered once and the iteration runs over typed arrays; the order of every addition is the same as a
+  // map-based walk, so the scores are identical, only much cheaper to compute.
+  const index = new Map<string, number>();
+  const ids: string[] = [];
+  for (const id of nodeIds) if (!index.has(id)) { index.set(id, ids.length); ids.push(id); }
+  const n = ids.length || 1;
+  const from: number[] = [];
+  const to: number[] = [];
+  const degree = new Uint32Array(ids.length);
   for (const r of rels) {
-    if (!nodes.has(r.sourceId) || !nodes.has(r.targetId)) continue;
-    const list = out.get(r.sourceId) ?? [];
-    list.push(r.targetId);
-    out.set(r.sourceId, list);
+    const a = index.get(r.sourceId);
+    const b = index.get(r.targetId);
+    if (a === undefined || b === undefined) continue;
+    from.push(a); to.push(b); degree[a]++;
   }
-  const n = nodes.size || 1;
-  let rank = new Map<string, number>([...nodes].map((id) => [id, 1 / n]));
+  // Group edges by source (stable, so per-source target order is the input order).
+  const start = new Uint32Array(ids.length + 1);
+  for (let i = 0; i < ids.length; i++) start[i + 1] = start[i] + degree[i];
+  const fill = start.slice(0, ids.length);
+  const targets = new Uint32Array(from.length);
+  for (let e = 0; e < from.length; e++) targets[fill[from[e]]++] = to[e];
+  let rank = new Float64Array(ids.length).fill(1 / n);
+  let next = new Float64Array(ids.length);
   const d = 0.85;
   for (let i = 0; i < iterations; i++) {
-    const next = new Map<string, number>([...nodes].map((id) => [id, (1 - d) / n]));
-    for (const id of nodes) {
-      const targets = out.get(id);
-      const r = rank.get(id) ?? 0;
-      if (!targets || targets.length === 0) continue;
-      const share = (d * r) / targets.length;
-      for (const t of targets) next.set(t, (next.get(t) ?? 0) + share);
+    next.fill((1 - d) / n);
+    for (let s = 0; s < ids.length; s++) {
+      const deg = start[s + 1] - start[s];
+      if (deg === 0) continue;
+      const share = (d * rank[s]) / deg;
+      for (let e = start[s]; e < start[s + 1]; e++) next[targets[e]] += share;
     }
-    rank = next;
+    [rank, next] = [next, rank];
   }
-  const max = maxOf(rank.values(), 1e-9);
+  const max = maxOf(rank, 1e-9);
   const norm = new Map<string, number>();
-  for (const [id, v] of rank) norm.set(id, v / max);
+  for (let i = 0; i < ids.length; i++) norm.set(ids[i], rank[i] / max);
   return norm;
 }

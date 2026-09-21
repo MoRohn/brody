@@ -6,7 +6,7 @@ import { strToU8, zipSync, type Zippable } from "fflate";
 import yauzl from "yauzl";
 import { z } from "zod";
 import { config } from "../config";
-import { getDb, schema } from "../db/client";
+import { getDb, schema, projectRows } from "../db/client";
 import type { DocReport } from "../docs/types";
 import { docIndexEntries } from "../docs";
 import { exportFile } from "../export";
@@ -52,10 +52,10 @@ export interface BundleResult { body: Buffer; filename: string; manifest: Bundle
 export async function buildBundle(projectId: string): Promise<BundleResult> {
   const { project, docs } = loadReportData(projectId);
   const db = getDb();
-  const files = db.select().from(schema.files).where(eq(schema.files.projectId, projectId)).all();
-  const symbols = db.select().from(schema.symbols).where(eq(schema.symbols.projectId, projectId)).all();
-  const relationships = db.select().from(schema.relationships).where(eq(schema.relationships.projectId, projectId)).all();
-  const findings = db.select().from(schema.findings).where(eq(schema.findings.projectId, projectId)).all();
+  const files = projectRows(schema.files, projectId);
+  const symbols = projectRows(schema.symbols, projectId);
+  const relationships = projectRows(schema.relationships, projectId);
+  const findings = projectRows(schema.findings, projectId);
   const questions = db.select().from(schema.questions).where(eq(schema.questions.projectId, projectId)).all();
   const job = db.select().from(schema.jobs).where(eq(schema.jobs.projectId, projectId)).orderBy(desc(schema.jobs.createdAt)).limit(1).get();
 

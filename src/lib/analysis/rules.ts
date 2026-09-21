@@ -165,9 +165,12 @@ export function scanText(path: string, language: string, text: string, isTest: b
   if (isTest) return out;
   const lines = text.split("\n");
   if (lines.length > 20000) return out;
-  const blanked = lines.map((l) => (l.length > 1200 ? l : null));
-  const codeLine = (i: number) => (blanked[i] === null ? lines[i] : (blanked[i] ??= blankLiterals(lines[i])));
-  void codeLine;
+  // Blanking literals and classifying comment lines are per-line facts, so compute each once and share it across every rule.
+  const blankedLine: (string | undefined)[] = new Array(lines.length);
+  const codeLine = (i: number) => (blankedLine[i] ??= blankLiterals(lines[i]));
+  const commentLine: (boolean | undefined)[] = new Array(lines.length);
+  const isComment = (i: number) => (commentLine[i] ??= /^(\/\/|#|\*|\/\*|<!--)/.test(lines[i].trim()));
+  let blankedText: string | undefined;
   for (const rule of RULES) {
     if (rule.languages !== "*" && !rule.languages.includes(language)) continue;
     if (rule.skipPaths?.test(path)) continue;
@@ -175,7 +178,7 @@ export function scanText(path: string, language: string, text: string, isTest: b
     let extra = 0;
     const emit = (f: FindingDraft) => { if (rule.perFile && hits > 0) { extra++; return; } out.push(f); hits++; };
     if (rule.pattern.flags.includes("s")) {
-      const src = rule.codeOnly ? lines.map((l) => blankLiterals(l)).join("\n") : text;
+      const src = rule.codeOnly ? (blankedText ??= lines.map((_, i) => codeLine(i)).join("\n")) : text;
       const re = new RegExp(rule.pattern.source, rule.pattern.flags.includes("g") ? rule.pattern.flags : rule.pattern.flags + "g");
       let m: RegExpExecArray | null;
       while ((m = re.exec(src)) && hits < 5) {
@@ -187,9 +190,8 @@ export function scanText(path: string, language: string, text: string, isTest: b
       for (let i = 0; i < lines.length && hits < 5; i++) {
         const raw = lines[i];
         if (raw.length > 1200) continue;
-        const trimmed = raw.trim();
-        if (/^(\/\/|#|\*|\/\*|<!--)/.test(trimmed) && rule.id !== "todo-fixme") continue;
-        const subject = rule.codeOnly ? blankLiterals(raw) : raw;
+        if (rule.id !== "todo-fixme" && isComment(i)) continue;
+        const subject = rule.codeOnly ? codeLine(i) : raw;
         if (!rule.pattern.test(subject)) continue;
         const ctx = lines.slice(Math.max(0, i - 2), i + 4).join("\n");
         if (rule.suppress?.(raw, ctx) || ignored(lines, i, rule.id)) continue;

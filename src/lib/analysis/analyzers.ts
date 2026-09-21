@@ -2,10 +2,10 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import ts from "typescript";
-import { Linter } from "eslint";
+import { createLintRunner, lintTargets, syntaxDiagnostics, syntaxTargets, SYNTAX_PATH, type LintRunner } from "./checkcore";
 import { config } from "../config";
 import type { LoadedFile } from "../graph/build";
+import type { FileChecks } from "../parse/types";
 import type { FindingDraft, Severity } from "../review/types";
 
 export interface AnalyzerStatus {
@@ -70,18 +70,16 @@ function sev(s: string): Severity {
 // ---------------------------------------------------------------------------
 // TypeScript / JavaScript syntactic diagnostics (no module resolution, no execution)
 // ---------------------------------------------------------------------------
-export function runTypeScriptSyntax(files: LoadedFile[]): { findings: FindingDraft[]; status: AnalyzerStatus } {
-  const targets = files.filter((f) => f.text !== undefined && /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(f.path) && !f.isGenerated);
+export function runTypeScriptSyntax(files: LoadedFile[], checks?: Map<string, FileChecks>): { findings: FindingDraft[]; status: AnalyzerStatus } {
+  const targets = syntaxTargets(files);
   const findings: FindingDraft[] = [];
-  if (targets.length === 0) return { findings, status: { name: "typescript", status: "skipped", detail: "No TypeScript or JavaScript files.", findings: 0 } };
-  for (const f of targets.slice(0, 3000)) {
-    const kind = /\.tsx$/.test(f.path) ? ts.ScriptKind.TSX : /\.jsx$/.test(f.path) ? ts.ScriptKind.JSX : /\.tsx?$|\.[cm]ts$/.test(f.path) ? ts.ScriptKind.TS : ts.ScriptKind.JS;
-    const sf = ts.createSourceFile(f.path, f.text!, ts.ScriptTarget.Latest, true, kind);
-    const diags = (sf as unknown as { parseDiagnostics?: ts.Diagnostic[] }).parseDiagnostics ?? [];
-    for (const d of diags.slice(0, 3)) {
-      const start = d.start ?? 0;
-      const line = sf.getLineAndCharacterOfPosition(start).line + 1;
-      const msg = ts.flattenDiagnosticMessageText(d.messageText, "\n");
+  if (files.filter((f) => f.text !== undefined && SYNTAX_PATH.test(f.path) && !f.isGenerated).length === 0) return { findings, status: { name: "typescript", status: "skipped", detail: "No TypeScript or JavaScript files.", findings: 0 } };
+  for (const f of targets) {
+    // Diagnostics computed beside the parse (in a worker) are reused; anything missing is computed here with the same code.
+    const diags = checks?.get(f.path)?.syntax ?? syntaxDiagnostics(f.path, f.text!);
+    for (const d of diags) {
+      const line = d.line;
+      const msg = d.message;
       findings.push({
         title: `Syntax error: ${msg.slice(0, 80)}`, category: "Correctness", severity: "High", confidence: "High", origin: "static", analyzer: "typescript",
         filePath: f.path, startLine: line, endLine: line, evidence: f.text!.split("\n").slice(Math.max(0, line - 2), line + 1).map((l, i) => `${Math.max(1, line - 1) + i}: ${l.slice(0, 200)}`).join("\n"),
@@ -96,45 +94,32 @@ export function runTypeScriptSyntax(files: LoadedFile[]): { findings: FindingDra
 // ESLint with a fixed, embedded rule set. Repository ESLint configs are never
 // loaded because they are executable JavaScript.
 // ---------------------------------------------------------------------------
-export async function runEslint(files: LoadedFile[]): Promise<{ findings: FindingDraft[]; status: AnalyzerStatus }> {
-  const targets = files.filter((f) => f.text !== undefined && /\.(ts|tsx|js|jsx|mjs|cjs|mts|cts)$/.test(f.path) && !f.isGenerated && f.size < 400_000);
+export async function runEslint(files: LoadedFile[], checks?: Map<string, FileChecks>): Promise<{ findings: FindingDraft[]; status: AnalyzerStatus }> {
+  const targets = lintTargets(files);
   if (targets.length === 0) return { findings: [], status: { name: "eslint", status: "skipped", detail: "No JavaScript or TypeScript files.", findings: 0 } };
-  let parser: unknown;
-  try {
-    parser = await import("@typescript-eslint/parser");
-  } catch {
-    return { findings: [], status: { name: "eslint", status: "unavailable", detail: "@typescript-eslint/parser is not installed.", findings: 0 } };
-  }
-  const linter = new Linter({ configType: "flat" });
-  const rules: Record<string, [string | number, ...unknown[]] | string> = {
-    "no-eval": "error", "no-implied-eval": "error", "no-new-func": "error", "no-dupe-keys": "error", "no-dupe-else-if": "error", "no-duplicate-case": "error",
-    "no-unreachable": "warn", "no-self-assign": "error", "no-cond-assign": "warn", "use-isnan": "error", "valid-typeof": "error", "no-fallthrough": "warn",
-    "no-unsafe-negation": "error", "no-unsafe-finally": "error", "no-loss-of-precision": "warn", "no-prototype-builtins": "warn", "no-sparse-arrays": "warn",
-    "no-compare-neg-zero": "error", "no-constant-binary-expression": "error", "no-unsafe-optional-chaining": "error", "no-async-promise-executor": "error",
-    "no-await-in-loop": "off", "no-empty-pattern": "warn", "no-self-compare": "warn", "require-atomic-updates": "off", "no-unmodified-loop-condition": "warn",
-    "no-setter-return": "error", "no-import-assign": "error", "no-const-assign": "error", "no-class-assign": "error", "no-func-assign": "error", "getter-return": "error",
-  };
+  // Results computed in a worker are reused; only files without one need a linter here, and it is created on first need.
+  let runner: LintRunner | null | undefined;
   const findings: FindingDraft[] = [];
   let linted = 0;
-  for (const f of targets.slice(0, 1500)) {
-    try {
-      const messages = linter.verify(f.text!, [{
-        files: ["**/*"],
-        languageOptions: { parser: parser as never, ecmaVersion: "latest", sourceType: "module", parserOptions: { ecmaFeatures: { jsx: true } } },
-        rules: rules as never,
-      }], { filename: f.path });
-      linted++;
-      for (const m of messages.slice(0, 5)) {
-        if (!m.ruleId || m.fatal) continue;
-        const line = m.line;
-        const isSecurity = /eval|implied|new-func/.test(m.ruleId);
-        findings.push({
-          title: `ESLint ${m.ruleId}: ${m.message.slice(0, 90)}`, category: isSecurity ? "Security" : "Correctness", severity: sev(isSecurity ? "High" : m.severity === 2 ? "Medium" : "Low"), confidence: "High", origin: "static", analyzer: `eslint/${m.ruleId}`,
-          filePath: f.path, startLine: line, endLine: m.endLine ?? line, evidence: f.text!.split("\n").slice(Math.max(0, line - 2), line + 1).map((l, i) => `${Math.max(1, line - 1) + i}: ${l.slice(0, 200)}`).join("\n"),
-          whatHappens: m.message, whyItMatters: `ESLint rule ${m.ruleId} flags constructs that are typically bugs or unsafe patterns.`, remediation: `Address the pattern reported by ${m.ruleId} at the cited line.`, verification: "verified", verificationNote: "Reported by ESLint using a fixed embedded rule set.",
-        });
-      }
-    } catch { /* unparsable file: the syntax analyzer reports it */ }
+  for (const f of targets) {
+    let res = checks?.get(f.path)?.lint;
+    if (!res) {
+      if (runner === undefined) runner = await createLintRunner();
+      if (!runner) return { findings: [], status: { name: "eslint", status: "unavailable", detail: "@typescript-eslint/parser is not installed.", findings: 0 } };
+      res = runner(f.path, f.text!);
+    }
+    if (!res.ok) continue;
+    linted++;
+    for (const m of res.messages) {
+      if (!m.ruleId || m.fatal) continue;
+      const line = m.line;
+      const isSecurity = /implied-eval/.test(m.ruleId);
+      findings.push({
+        title: `ESLint ${m.ruleId}: ${m.message.slice(0, 90)}`, category: isSecurity ? "Security" : "Correctness", severity: sev(isSecurity ? "High" : m.severity === 2 ? "Medium" : "Low"), confidence: "High", origin: "static", analyzer: `eslint/${m.ruleId}`,
+        filePath: f.path, startLine: line, endLine: m.endLine ?? line, evidence: f.text!.split("\n").slice(Math.max(0, line - 2), line + 1).map((l, i) => `${Math.max(1, line - 1) + i}: ${l.slice(0, 200)}`).join("\n"),
+        whatHappens: m.message, whyItMatters: `ESLint rule ${m.ruleId} flags constructs that are typically bugs or unsafe patterns.`, remediation: `Address the pattern reported by ${m.ruleId} at the cited line.`, verification: "verified", verificationNote: "Reported by ESLint using a fixed embedded rule set.",
+      });
+    }
   }
   return { findings, status: { name: "eslint", status: "ran", detail: "ESLint Linter API with a fixed embedded rule set; repository ESLint configs are not executed.", findings: findings.length, files: linted } };
 }

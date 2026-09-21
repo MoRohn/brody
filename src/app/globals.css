@@ -285,3 +285,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .dots i { animation: pulse-dot 2.4s ease-in-out infinite !important; }
   .progress.indeterminate > .bar { width: 100%; opacity: .45; }
 }
+
+/* Code map: React Flow's own chrome, themed with the brightness levels. The minimap needs classes because SVG fill
+   attributes cannot hold var(). */
+.react-flow .react-flow__controls { box-shadow: none; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.react-flow .react-flow__controls-button { background: var(--panel); color: var(--fg); border-bottom: 1px solid var(--line); }
+.react-flow .react-flow__controls-button:hover { background: var(--panel2); }
+.react-flow .react-flow__controls-button svg { fill: currentColor; }
+.react-flow__minimap { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.react-flow__minimap-node.mm-band { fill: var(--line); stroke: none; opacity: 0.5; }
+.react-flow__minimap-node.mm-node { fill: var(--line-strong); stroke: none; }
+.react-flow__minimap-node.mm-low { fill: var(--low); }
+.react-flow__minimap-node.mm-medium { fill: var(--med); }
+.react-flow__minimap-node.mm-high { fill: var(--high); }
+.react-flow__minimap-node.mm-critical { fill: var(--crit); }
+.react-flow__edge-textbg { stroke: none; }

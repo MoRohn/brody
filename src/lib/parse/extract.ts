@@ -1,14 +1,7 @@
 import type { Node, Tree } from "./treesitter";
+import { createComplexity } from "./complexity";
 import { emptyParse, type ParsedFile, type ParsedSymbol, type SymbolKind } from "./types";
 
-/** Node types that mark a branch for the rough complexity metric. */
-const BRANCH_TYPES = new Set([
-  "if_statement", "for_statement", "for_in_statement", "while_statement", "do_statement", "switch_case", "case_clause", "catch_clause",
-  "conditional_expression", "ternary_expression", "elif_clause", "except_clause", "match_arm", "when_entry", "for_range_loop", "foreach_statement",
-  "expression_case", "type_case", "if_expression", "while_expression", "for_expression", "match_expression", "binary_expression",
-]);
-
-const BINARY_LOGICAL = /^(&&|\|\||and|or|\?\?)$/;
 
 interface Ctx {
   src: string;
@@ -85,22 +78,12 @@ function addSymbol(ctx: Ctx, s: Omit<ParsedSymbol, "index" | "qualifiedName"> & 
   return index;
 }
 
+const complexityByTree = new WeakMap<object, (n: Node) => number>();
+/** Rough cyclomatic complexity of a node; the branch index for its tree is built once, on first use. */
 function complexityOf(n: Node): number {
-  let c = 1;
-  const stack: Node[] = [n];
-  while (stack.length) {
-    const cur = stack.pop()!;
-    for (const ch of cur.namedChildren) {
-      if (BRANCH_TYPES.has(ch.type)) {
-        if (ch.type === "binary_expression") {
-          const op = ch.children.find((k) => !k.isNamed);
-          if (op && BINARY_LOGICAL.test(op.text)) c++;
-        } else c++;
-      }
-      stack.push(ch);
-    }
-  }
-  return c;
+  let f = complexityByTree.get(n.tree);
+  if (!f) { f = createComplexity(n.tree.rootNode); complexityByTree.set(n.tree, f); }
+  return f(n);
 }
 
 function walk(n: Node, visit: (node: Node, depth: number) => boolean | void, depth = 0): void {
@@ -109,11 +92,46 @@ function walk(n: Node, visit: (node: Node, depth: number) => boolean | void, dep
   for (const ch of n.namedChildren) walk(ch, visit, depth + 1);
 }
 
-function collectIdentifiers(root: Node, out: Set<string>, types: string[]): void {
-  for (const id of root.descendantsOfType(types)) {
+function collectIdentifierNodes(nodes: Node[], out: Set<string>): void {
+  for (const id of nodes) {
     const t = id.text;
     if (t.length > 1 && t.length < 80) out.add(t);
   }
+}
+
+function collectIdentifiers(root: Node, out: Set<string>, types: string[]): void {
+  collectIdentifierNodes(root.descendantsOfType(types), out);
+}
+
+/**
+ * One native scan for every node type an extractor will ask about. Each request is then answered from memory, in document
+ * order, instead of walking the whole tree again: the TypeScript extractor used to make six whole-file scans (imports, calls
+ * twice, exports, identifiers) plus one scan inside every export statement, together about a third of extraction time.
+ */
+function nodeScan(root: Node, types: string[]) {
+  const nodes = root.descendantsOfType(types);
+  const kinds = nodes.map((n) => n.type);
+  const buckets = new Map<string, Node[]>();
+  nodes.forEach((n, i) => { const b = buckets.get(kinds[i]); if (b) b.push(n); else buckets.set(kinds[i], [n]); });
+  return {
+    /** Nodes of these types, in document order. */
+    of(...want: string[]): Node[] {
+      if (want.length === 1) return buckets.get(want[0]) ?? [];
+      const set = new Set(want);
+      return nodes.filter((_, i) => set.has(kinds[i]));
+    },
+    /** Nodes of one type inside `container` (a proper subtree, so a range test is exact), in document order. */
+    within(type: string, container: Node): Node[] {
+      const list = buckets.get(type);
+      if (!list || list.length === 0) return [];
+      const from = container.startIndex, to = container.endIndex;
+      let lo = 0, hi = list.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (list[mid].startIndex < from) lo = mid + 1; else hi = mid; }
+      const out: Node[] = [];
+      for (let i = lo; i < list.length && list[i].startIndex < to; i++) if (list[i].endIndex <= to) out.push(list[i]);
+      return out;
+    },
+  };
 }
 
 /** Determine the enclosing symbol index for a node given recorded symbol ranges. */
@@ -147,9 +165,10 @@ function extractTsJs(ctx: Ctx, tree: Tree): void {
   const root = tree.rootNode;
   const { out } = ctx;
   const exportedNames = new Set<string>();
+  const scan = nodeScan(root, ["import_statement", "call_expression", "new_expression", "export_statement", "export_specifier", "identifier", "type_identifier", "property_identifier", "jsx_identifier"]);
 
   // Imports
-  for (const imp of root.descendantsOfType("import_statement")) {
+  for (const imp of scan.of("import_statement")) {
     const src = imp.childForFieldName("source");
     if (!src) continue;
     const spec = src.text.replace(/^['"`]|['"`]$/g, "");
@@ -163,7 +182,7 @@ function extractTsJs(ctx: Ctx, tree: Tree): void {
     out.imports.push({ specifier: spec, names: [...new Set(names)], line: lineOf(imp), isTypeOnly });
   }
   // require() and dynamic import()
-  for (const call of root.descendantsOfType("call_expression")) {
+  for (const call of scan.of("call_expression")) {
     const fn = call.childForFieldName("function");
     const args = call.childForFieldName("arguments");
     const first = args?.namedChildren[0];
@@ -178,12 +197,13 @@ function extractTsJs(ctx: Ctx, tree: Tree): void {
     }
   }
   // export names
-  for (const exp of root.descendantsOfType("export_statement")) {
-    for (const spec of exp.descendantsOfType("export_specifier")) exportedNames.add((spec.childForFieldName("alias") ?? spec.childForFieldName("name"))?.text ?? "");
+  for (const exp of scan.of("export_statement")) {
+    const specs = scan.within("export_specifier", exp);
+    for (const spec of specs) exportedNames.add((spec.childForFieldName("alias") ?? spec.childForFieldName("name"))?.text ?? "");
     if (/^export\s+default\b/.test(exp.text)) exportedNames.add("default");
     if (/^export\s+\*\s+from/.test(exp.text)) exportedNames.add("*");
     const src = exp.childForFieldName("source");
-    if (src) out.imports.push({ specifier: src.text.replace(/^['"`]|['"`]$/g, ""), names: [...exp.descendantsOfType("export_specifier")].map((sp) => sp.childForFieldName("name")?.text ?? "").filter(Boolean), line: lineOf(exp) });
+    if (src) out.imports.push({ specifier: src.text.replace(/^['"`]|['"`]$/g, ""), names: specs.map((sp) => sp.childForFieldName("name")?.text ?? "").filter(Boolean), line: lineOf(exp) });
   }
 
   const declTypes = [
@@ -305,7 +325,7 @@ function extractTsJs(ctx: Ctx, tree: Tree): void {
 
   // Inline route handlers (app.get("/x", (req, res) => ...)) become endpoint symbols so their calls are attributed correctly.
   const ROUTE_OBJ = /^(app|router|server|api|fastify|hono|r|route|routes|v\d+|admin|public|private|koa|instance|\w*[Rr]outer|\w*[Aa]pp)$/;
-  for (const call of root.descendantsOfType("call_expression")) {
+  for (const call of scan.of("call_expression")) {
     const fn = call.childForFieldName("function");
     if (fn?.type !== "member_expression") continue;
     const obj = fn.childForFieldName("object")?.text ?? "";
@@ -328,7 +348,7 @@ function extractTsJs(ctx: Ctx, tree: Tree): void {
   for (const e of exportedNames) if (e && !out.exports.includes(e)) out.exports.push(e);
 
   // Calls
-  for (const call of root.descendantsOfType(["call_expression", "new_expression"])) {
+  for (const call of scan.of("call_expression", "new_expression")) {
     const fn = call.type === "new_expression" ? call.childForFieldName("constructor") : call.childForFieldName("function");
     if (!fn) continue;
     let callee = fn.text;
@@ -337,7 +357,7 @@ function extractTsJs(ctx: Ctx, tree: Tree): void {
     if (!/^[A-Za-z_$#][\w$]*$/.test(callee)) continue;
     out.calls.push({ name: callee, expression: text(fn, 120), line: lineOf(call), callerIndex: enclosingSymbol(ctx, lineOf(call)), args: argsOf(call), isNew: call.type === "new_expression" });
   }
-  collectIdentifiers(root, out.identifiers, ["identifier", "type_identifier", "property_identifier", "jsx_identifier"]);
+  collectIdentifierNodes(scan.of("identifier", "type_identifier", "property_identifier", "jsx_identifier"), out.identifiers);
 }
 
 // ---------------------------------------------------------------------------

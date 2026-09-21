@@ -1,9 +1,10 @@
 import { eq } from "drizzle-orm";
+import type { FileChecks } from "../parse/types";
 import { runEslint, runGo, runPython, runTypeScriptSyntax, type AnalyzerStatus } from "../analysis/analyzers";
 import { scanText } from "../analysis/rules";
 import { structuralFindings } from "../analysis/structural";
 import { config } from "../config";
-import { getDb, schema } from "../db/client";
+import { getDb, schema, projectRows } from "../db/client";
 import type { Architecture } from "../discover/types";
 import { loadProjectFiles } from "../graph/build";
 import { UsageMeter, type AIProvider } from "../ai";
@@ -21,10 +22,9 @@ export interface StaticReviewResult {
 }
 
 /** Deterministic analysis: pattern rules, language analyzers, structural checks. Never uses AI. */
-export async function runStaticReview(projectId: string, arch: Architecture): Promise<StaticReviewResult> {
-  const db = getDb();
+export async function runStaticReview(projectId: string, arch: Architecture, checks?: Map<string, FileChecks>): Promise<StaticReviewResult> {
   const files = loadProjectFiles(projectId).filter((f) => !f.isExcluded);
-  const symbols = db.select().from(schema.symbols).where(eq(schema.symbols.projectId, projectId)).all();
+  const symbols = projectRows(schema.symbols, projectId);
   const drafts: FindingDraft[] = [];
   const analyzers: AnalyzerStatus[] = [];
 
@@ -42,10 +42,10 @@ export async function runStaticReview(projectId: string, arch: Architecture): Pr
   analyzers.push({ name: "brody-structure", status: "ran", detail: "Structural checks over the repository model (size, complexity, tests, operations, dependencies, secrets).", findings: structural.length });
 
   if (config.staticAnalysis.enabled) {
-    const tsr = runTypeScriptSyntax(files);
+    const tsr = runTypeScriptSyntax(files, checks);
     pushAll(drafts, tsr.findings);
     analyzers.push(tsr.status);
-    const es = await runEslint(files);
+    const es = await runEslint(files, checks);
     pushAll(drafts, es.findings);
     analyzers.push(es.status);
     const py = await runPython(files);
@@ -78,17 +78,19 @@ export async function runReview(opts: {
   onProgress?: (msg: string) => void;
   onStage?: (stage: "static" | "ai" | "verify") => void;
   isCancelled?: () => boolean;
+  /** Per-file checks already computed while parsing; the static stage reuses them instead of repeating the work. */
+  checks?: Map<string, FileChecks>;
 }): Promise<FullReviewResult> {
   const { projectId, arch, provider, meter } = opts;
   const db = getDb();
   opts.onStage?.("static");
-  const stat = await runStaticReview(projectId, arch);
+  const stat = await runStaticReview(projectId, arch, opts.checks);
   opts.onProgress?.(`Static analysis produced ${stat.drafts.length} findings across ${stat.analyzers.filter((a) => a.status === "ran").length} analyzers`);
 
   const files = loadProjectFiles(projectId).filter((f) => !f.isExcluded);
   const filesByPath = new Map(files.map((f) => [f.path, f]));
-  const symbols = db.select().from(schema.symbols).where(eq(schema.symbols.projectId, projectId)).all();
-  const rels = db.select().from(schema.relationships).where(eq(schema.relationships.projectId, projectId)).all();
+  const symbols = projectRows(schema.symbols, projectId);
+  const rels = projectRows(schema.relationships, projectId);
   const ctx = { filesByPath, symbols, rels };
 
   let aiDrafts: FindingDraft[] = [];

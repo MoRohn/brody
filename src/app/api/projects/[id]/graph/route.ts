@@ -20,6 +20,6 @@ export async function GET(req: Request, { params }: Ctx) {
       if (!s) throw new AppError("invalid_request", "Provide a symbol id.", 400);
       g = symbolGraph(id, s, intParam(u.searchParams.get("depth"), 1, 1, 3));
     } else throw new AppError("invalid_request", `Unknown graph type "${type}".`, 400, "Use area, module or symbol.");
-    return json({ graph: g, mermaid: u.searchParams.get("mermaid") === "1" ? graphToMermaid(g) : undefined });
+    return json({ graph: g, mermaid: u.searchParams.get("mermaid") === "1" ? graphToMermaid(g, "LR", { grouped: true }) : undefined });
   });
 }

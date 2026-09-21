@@ -22,6 +22,7 @@ export default defineConfig({
     url: `http://localhost:${PORT}/api/status`,
     reuseExistingServer: false,
     timeout: 60_000,
-    env: { PORT: String(PORT), ALLOWED_HOSTS: "", DATABASE_PATH: dbPath, AI_PROVIDER: "none", ANTHROPIC_API_KEY: "", OPENAI_API_KEY: "", OPENAI_BASE_URL: `http://127.0.0.1:${process.env.E2E_MOCK_AI_PORT ?? 4599}/v1` },
+    // PARSE_WORKER_MIN_FILES=1 makes even the tiny fixtures run on worker threads, so the production server (and dist/parse-worker.cjs) is exercised.
+    env: { PORT: String(PORT), PARSE_WORKERS: "2", PARSE_WORKER_MIN_FILES: "1", ALLOWED_HOSTS: "", DATABASE_PATH: dbPath, AI_PROVIDER: "none", ANTHROPIC_API_KEY: "", OPENAI_API_KEY: "", OPENAI_BASE_URL: `http://127.0.0.1:${process.env.E2E_MOCK_AI_PORT ?? 4599}/v1` },
   },
 });

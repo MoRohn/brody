@@ -2,7 +2,16 @@
  * Central runtime configuration. Every tunable comes from the environment so
  * the same build can be deployed with different limits and providers.
  */
+import os from "node:os";
 import path from "node:path";
+
+/** Worker threads that fit this machine: spare cores, capped at 4, and only as many as memory allows (cgroup limit aware). */
+function defaultParseWorkers(): number {
+  const limit = (process as { constrainedMemory?: () => number }).constrainedMemory?.() || Infinity;
+  const memory = Math.min(os.totalmem(), limit);
+  const byMemory = Math.floor((memory * 0.8 - 1.5 * 1024 ** 3) / (300 * 1024 ** 2));
+  return Math.max(0, Math.min(4, os.availableParallelism() - 1, byMemory));
+}
 
 function int(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -64,6 +73,18 @@ export const config = {
     /** Server-side token used when the user supplies none. Never logged. */
     token: process.env.GITHUB_TOKEN,
     apiBase: process.env.GITHUB_API_BASE ?? "https://api.github.com",
+  },
+  /**
+   * Parsing (and the per-file static checks that go with it) runs on worker threads. PARSE_WORKERS sets how many; 0 keeps
+   * everything on the main thread. The default leaves one core for the web server, caps at 4, and also fits the memory
+   * available (each worker holds its own copy of the grammars, TypeScript and ESLint, about 300 MB). Analyses with fewer than
+   * PARSE_WORKER_MIN_FILES files to parse stay in-process: starting workers costs about a second, which only pays off on
+   * larger repositories.
+   */
+  parse: {
+    workers: process.env.PARSE_WORKERS !== undefined && process.env.PARSE_WORKERS !== "" ? Math.max(0, Math.floor(Number(process.env.PARSE_WORKERS)) || 0) : defaultParseWorkers(),
+    minFiles: Number(process.env.PARSE_WORKER_MIN_FILES) || 400,
+    workerPath: process.env.BRODY_PARSE_WORKER || undefined,
   },
   staticAnalysis: {
     enabled: process.env.STATIC_ANALYSIS !== "off",

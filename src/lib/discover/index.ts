@@ -1,5 +1,5 @@
 import { eq, and } from "drizzle-orm";
-import { getDb, schema } from "../db/client";
+import { getDb, schema, projectRows, bulkInsert, bulkUpdate } from "../db/client";
 import type { RelationshipRow, SymbolRow } from "../db/schema";
 import { loadProjectFiles, type LoadedFile } from "../graph/build";
 import { detectSecrets } from "../ingest/secrets";
@@ -206,8 +206,8 @@ export async function discoverArchitecture(projectId: string): Promise<Architect
   const db = getDb();
   const files = loadProjectFiles(projectId, { includeExcluded: true });
   const included = files.filter((f) => !f.isExcluded);
-  const symbols = db.select().from(schema.symbols).where(eq(schema.symbols.projectId, projectId)).all();
-  const rels = db.select().from(schema.relationships).where(eq(schema.relationships.projectId, projectId)).all();
+  const symbols = projectRows(schema.symbols, projectId);
+  const rels = projectRows(schema.relationships, projectId);
   const filesById = new Map(files.map((f) => [f.id, f]));
   const filesByPath = new Map(files.map((f) => [f.path, f]));
   const symbolsById = new Map(symbols.map((s) => [s.id, s]));
@@ -350,8 +350,8 @@ export async function discoverArchitecture(projectId: string): Promise<Architect
   db.transaction((tx) => {
     tx.delete(schema.relationships).where(and(eq(schema.relationships.projectId, projectId), eq(schema.relationships.kind, "ROUTES_TO"))).run();
     const routeRels = routes.filter((r) => r.symbolId).map((r) => ({ id: newId("rel"), projectId, kind: "ROUTES_TO", sourceType: "external", sourceId: `route:${r.method} ${r.path}`, targetType: "symbol", targetId: r.symbolId!, filePath: r.file, line: r.line, confidence: 0.9, meta: { method: r.method, path: r.path, framework: r.framework } }));
-    for (let i = 0; i < routeRels.length; i += 200) tx.insert(schema.relationships).values(routeRels.slice(i, i + 200)).run();
-    for (const f of included) tx.update(schema.files).set({ area: f.area ?? null, role: f.role ?? null }).where(eq(schema.files.id, f.id)).run();
+    bulkInsert(schema.relationships, routeRels);
+    bulkUpdate(schema.files, ["id"], ["area", "role"], included.map((f) => ({ id: f.id, area: f.area ?? null, role: f.role ?? null })));
     const project = tx.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get();
     tx.update(schema.projects).set({ analysis: { ...(project?.analysis ?? {}), architecture }, updatedAt: Date.now() }).where(eq(schema.projects.id, projectId)).run();
   });

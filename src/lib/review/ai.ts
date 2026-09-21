@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
+import { } from "drizzle-orm";
 import { z } from "zod";
 import { config } from "../config";
-import { getDb, schema } from "../db/client";
+import { schema, projectRows } from "../db/client";
 import type { FileRow, RelationshipRow, SymbolRow } from "../db/schema";
 import type { Architecture } from "../discover/types";
 import type { LoadedFile } from "../graph/build";
@@ -120,9 +120,8 @@ export async function runAiReview(opts: {
   isCancelled?: () => boolean;
 }): Promise<AiReviewResult> {
   const { provider, meter, files, arch } = opts;
-  const db = getDb();
-  const symbols = db.select().from(schema.symbols).where(eq(schema.symbols.projectId, opts.projectId)).all();
-  const rels = db.select().from(schema.relationships).where(eq(schema.relationships.projectId, opts.projectId)).all();
+  const symbols = projectRows(schema.symbols, opts.projectId);
+  const rels = projectRows(schema.relationships, opts.projectId);
   const filesById = new Map(files.map((f) => [f.id, f]));
   const symbolsById = new Map(symbols.map((s) => [s.id, s]));
   const symbolsByFile = new Map<string, SymbolRow[]>();

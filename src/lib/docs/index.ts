@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { getDb, schema } from "../db/client";
+import { getDb, schema, projectRows } from "../db/client";
 import type { Architecture } from "../discover/types";
 import { loadProjectFiles } from "../graph/build";
 import { UsageMeter, type AIProvider } from "../ai";
@@ -19,9 +19,9 @@ export function loadDocInputs(projectId: string, arch: Architecture): DocInputs 
   if (!project) throw new Error("Project not found");
   const files = loadProjectFiles(projectId).filter((f) => !f.isExcluded);
   // Re-read after discovery so roles/areas are current.
-  const symbols = db.select().from(schema.symbols).where(eq(schema.symbols.projectId, projectId)).all();
-  const rels = db.select().from(schema.relationships).where(eq(schema.relationships.projectId, projectId)).all();
-  const findings = db.select().from(schema.findings).where(eq(schema.findings.projectId, projectId)).all();
+  const symbols = projectRows(schema.symbols, projectId);
+  const rels = projectRows(schema.relationships, projectId);
+  const findings = projectRows(schema.findings, projectId);
   return { projectName: project.name, sourceUrl: project.sourceUrl, branch: project.branch, commit: project.commit, files, symbols, rels, findings, arch };
 }
 

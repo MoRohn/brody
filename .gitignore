@@ -41,6 +41,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# compiled parse worker (npm run build:worker)
+/dist
+
 # app data and test output
 /data
 /test-results

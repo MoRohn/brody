@@ -1,5 +1,5 @@
-import { eq } from "drizzle-orm";
-import { getDb, schema } from "../db/client";
+import { } from "drizzle-orm";
+import { schema, projectRows } from "../db/client";
 import { parseReport } from "./document";
 import { renderDocx } from "./docx";
 import { buildHtmlDocument } from "./html";
@@ -30,11 +30,10 @@ export function buildHtml(projectId: string, opts: { print?: boolean; scope?: Re
 
 /** Structured export with every layer of the repository model. */
 export function buildJson(projectId: string): Record<string, unknown> {
-  const db = getDb();
   const { project, arch, docs, findings } = loadReportData(projectId);
-  const files = db.select().from(schema.files).where(eq(schema.files.projectId, projectId)).all();
-  const symbols = db.select().from(schema.symbols).where(eq(schema.symbols.projectId, projectId)).all();
-  const relationships = db.select().from(schema.relationships).where(eq(schema.relationships.projectId, projectId)).all();
+  const files = projectRows(schema.files, projectId);
+  const symbols = projectRows(schema.symbols, projectId);
+  const relationships = projectRows(schema.relationships, projectId);
   const { analysis, ...projectCore } = project;
   const pipeline = (analysis as { pipeline?: unknown; inventory?: unknown; map?: unknown } | null) ?? {};
   return {

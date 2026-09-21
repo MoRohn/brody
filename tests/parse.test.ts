@@ -96,3 +96,48 @@ export { a as b } from './c';
     expect(r.symbols.some((s) => s.name === "ok")).toBe(true);
   });
 });
+
+describe("TypeScript/JavaScript extraction: imports, exports and calls come out the same from one scan", () => {
+  const src = [
+    'import React, { useState as useS, type FC } from "react";',
+    'import * as path from "node:path";',
+    'import def from "./def";',
+    'const fs = require("fs");',
+    'const { a, b } = require("./ab");',
+    'const lazy = () => import("./lazy");',
+    'export { x as y, z } from "./mod";',
+    'export * from "./all";',
+    'export default function main() { return new Widget(path.join("a")); }',
+    'export const k = 1, m = 2;',
+    'export { k as kk };',
+    'class Widget { run() { helper(); this.other(); } }',
+    'function helper() {}',
+    'const app = express(); app.get("/ping", (req, res) => res.json({}));',
+  ].join("\n");
+
+  it("returns imports, export names, calls, routes and identifiers exactly as the tree contains them", async () => {
+    const p = await parseFile("src/x.ts", "TypeScript", src);
+    expect(p.status).toBe("ast");
+    expect(p.imports.map((i) => [i.specifier, i.names, !!i.isTypeOnly, i.line])).toEqual([
+      ["react", ["React", "useS", "FC"], false, 1],
+      ["node:path", ["path"], false, 2],
+      ["./def", ["def"], false, 3],
+      ["fs", ["fs"], false, 4],
+      ["./ab", ["a", "b"], false, 5],
+      ["./lazy", [], false, 6],
+      ["./mod", ["x", "z"], false, 7],
+      ["./all", [], false, 8],
+    ]);
+    expect(p.exports).toEqual(["main", "k", "m", "y", "z", "*", "default", "kk"]);
+    expect(p.calls.map((c) => [c.name, !!c.isNew, c.line])).toEqual([["Widget", true, 9], ["join", false, 9], ["helper", false, 12], ["other", false, 12], ["express", false, 14], ["get", false, 14], ["json", false, 14]]);
+    expect(p.symbols.some((s) => s.kind === "endpoint" && s.name === "GET /ping")).toBe(true);
+    for (const id of ["React", "useS", "Widget", "helper", "express", "kk"]) expect(p.identifiers.has(id)).toBe(true);
+    expect(p.identifiers.has("a")).toBe(false); // single-character names are not tracked
+  });
+
+  it("finds nothing extra in a file with no imports, exports or calls", async () => {
+    const p = await parseFile("src/empty.ts", "TypeScript", "const a = 1;\ntype T = { readonly ab: string };\n");
+    expect([p.imports.length, p.exports.length, p.calls.length]).toEqual([0, 0, 0]);
+    expect(p.identifiers.has("ab")).toBe(true);
+  });
+});

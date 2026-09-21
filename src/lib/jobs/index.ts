@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
-import { getDb, schema } from "../db/client";
+import { getDb, schema, projectRows } from "../db/client";
 import type { JobRow, JobStage } from "../db/schema";
 import { explainAIError, getAIProvider, providerStatus, UsageMeter } from "../ai";
 import { resolveEmbeddingModel } from "../ai/settings";
@@ -158,7 +158,7 @@ export async function processJob(jobId: string): Promise<void> {
 
     // 2. Enumerate ------------------------------------------------------
     currentStage = "enumerate"; t.start("enumerate");
-    const fileRows = db.select().from(schema.files).where(eq(schema.files.projectId, projectId)).all();
+    const fileRows = projectRows(schema.files, projectId);
     const included = fileRows.filter((f) => !f.isExcluded);
     if (included.length === 0) throw new AppError("no_source", "There are no files to analyse. All files were excluded or the upload was empty.", 400, "Upload source code, or import a repository that contains source files.");
     if (!included.some((f) => f.classification === "source" || f.classification === "schema")) throw new AppError("no_source_code", "No source code was found. The project contains only documentation, configuration, binaries or data.", 400, "Analysis needs at least one file in a supported programming language.");
@@ -173,9 +173,11 @@ export async function processJob(jobId: string): Promise<void> {
     const build = await buildGraph(projectId, (done, total) => { t.check(); t.detail(graphStarted ? "graph" : "parse", `${done}/${total} files`); }, (phase) => {
       if (phase === "graph") { graphStarted = true; t.done("parse", "Source parsed"); currentStage = "graph"; t.start("graph"); }
     });
+    const { checks, ...buildSummary } = build; // the per-file checks are handed to the review below, not stored in the job summary
     t.done("graph", `${build.symbols} symbols, ${build.relationships} relationships; ${build.astParsed} AST-parsed, ${build.textParsed} text-parsed, ${build.reused} reused from cache${build.errors.length ? `, ${build.errors.length} parse warnings` : ""}`);
     // Update the parse stage detail with the final numbers.
-    t.detail("parse", `${build.parsed} files parsed (${build.astParsed} AST, ${build.textParsed} text fallback, ${build.skipped} skipped)`);
+    t.detail("parse", `${build.parsed} files parsed (${build.astParsed} AST, ${build.textParsed} text fallback, ${build.skipped} skipped)${build.mode?.mode === "workers" ? `, on ${build.mode.workers} worker threads` : ""}`);
+    if (build.mode) t.note(build.mode.mode === "workers" ? `Parsing ran on ${build.mode.workers} worker threads.` : `Parsing ran in-process${build.mode.reason ? `: ${build.mode.reason}` : ""}.`);
 
     // 5. Index ----------------------------------------------------------
     currentStage = "index"; t.start("index");
@@ -192,7 +194,7 @@ export async function processJob(jobId: string): Promise<void> {
     currentStage = "static"; t.start("static");
     let reviewStage: "static" | "ai" | "verify" = "static";
     const review = await runReview({
-      projectId, arch, provider, meter, isCancelled: t.isCancelled, onProgress: (m) => t.note(m),
+      projectId, arch, provider, meter, isCancelled: t.isCancelled, onProgress: (m) => t.note(m), checks,
       onStage: (s) => {
         if (s === "ai") { t.done("static", "Static analysis complete"); if (provider) { currentStage = "review"; t.start("review", "Running AI review passes"); } else { t.skip("review", providerStatus().reason ?? "No AI provider"); } }
         if (s === "verify") { if (reviewStage === "ai" && provider) t.done("review", "AI review passes complete"); else if (reviewStage === "static") { t.done("static", "Static analysis complete"); t.skip("review", providerStatus().reason ?? "No AI provider"); } currentStage = "verify"; t.start("verify"); }
@@ -231,7 +233,7 @@ export async function processJob(jobId: string): Promise<void> {
     // 12. Finalize ------------------------------------------------------
     currentStage = "finalize"; t.start("finalize");
     const fin = db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get()!;
-    const summary = { usage: meter.usage, aiFailures: meter.failures, analyzers: review.analyzers, ai: review.ai, build: { ...build, errors: build.errors.slice(0, 20) }, model: provider ? { provider: provider.name, model: provider.model } : null };
+    const summary = { usage: meter.usage, aiFailures: meter.failures, analyzers: review.analyzers, ai: review.ai, build: { ...buildSummary, errors: build.errors.slice(0, 20) }, model: provider ? { provider: provider.name, model: provider.model } : null };
     db.update(schema.projects).set({ status: "ready", analysis: { ...(fin.analysis ?? {}), pipeline: summary }, updatedAt: Date.now() }).where(eq(schema.projects.id, projectId)).run();
     t.done("finalize", "Report ready");
     db.update(schema.jobs).set({ status: "succeeded", finishedAt: Date.now(), currentStage: null, summary: summary as unknown as Record<string, unknown> }).where(eq(schema.jobs.id, jobId)).run();

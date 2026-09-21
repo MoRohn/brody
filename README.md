@@ -119,6 +119,7 @@ All configuration is environment variables; see [`.env.example`](.env.example).
 | `DATABASE_PATH`, `MAX_*` | Storage location and hard limits on files, bytes, ZIP entries and compression ratio. `MAX_UPLOAD_BYTES` (200 MB by default) is also the size Next.js buffers per request; larger uploads are refused with a clear message |
 | `AI_MAX_MODULES_EXPLAINED` | How many folders get an AI-written explanation of how their files work together (default 24; the rest are explained from the dependency graph) |
 | `STATIC_ANALYSIS`, `RUFF_PATH`, `PYTHON_PATH` | Language analyzer controls |
+| `PARSE_WORKERS`, `PARSE_WORKER_MIN_FILES` | Worker threads for parsing and the per-file checks. `PARSE_WORKERS=0` keeps everything in-process; by default up to 4 workers are used when the machine has spare cores and about 300 MB of memory each. Repositories under `PARSE_WORKER_MIN_FILES` (400) files stay in-process. `npm run build` also builds the worker (`dist/parse-worker.cjs`); without it, development runs the TypeScript source through `tsx`, and if no worker can start Brody parses in-process, with identical results |
 | `EMBEDDED_WORKER` | `off` to run the worker separately with `npm run worker` |
 
 ### Using Claude or OpenAI, and choosing models

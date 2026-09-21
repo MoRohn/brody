@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { getReadyProject, guard, json } from "@/lib/api";
-import { getDb, schema } from "@/lib/db/client";
+import { getDb, schema, projectRows } from "@/lib/db/client";
 import type { DocReport } from "@/lib/docs/types";
 import { getFileContent } from "@/lib/ingest/store";
 import { changeImpact } from "@/lib/map";
@@ -26,9 +26,9 @@ export async function GET(req: Request, { params }: Ctx) {
     else { content = getFileContent(file.hash) ?? null; if (content && content.length > MAX_RETURN) { content = content.slice(0, MAX_RETURN); note = "File truncated for display."; } }
     const symbols = db.select().from(schema.symbols).where(and(eq(schema.symbols.projectId, id), eq(schema.symbols.fileId, file.id))).all().sort((a, b) => a.startLine - b.startLine);
     const symbolIds = new Set(symbols.map((s) => s.id));
-    const rels = db.select().from(schema.relationships).where(eq(schema.relationships.projectId, id)).all();
-    const filesById = new Map(db.select().from(schema.files).where(eq(schema.files.projectId, id)).all().map((f) => [f.id, f]));
-    const symbolsById = new Map(db.select().from(schema.symbols).where(eq(schema.symbols.projectId, id)).all().map((s) => [s.id, s]));
+    const rels = projectRows(schema.relationships, id);
+    const filesById = new Map(projectRows(schema.files, id).map((f) => [f.id, f]));
+    const symbolsById = new Map(projectRows(schema.symbols, id).map((s) => [s.id, s]));
     const outgoing = new Set<string>(), incoming = new Set<string>(), tests = new Set<string>(), externals = new Set<string>();
     for (const r of rels) {
       const srcIn = r.sourceId === file.id || symbolIds.has(r.sourceId);

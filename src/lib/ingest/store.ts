@@ -1,5 +1,5 @@
 import { and, eq, desc, inArray, isNull, ne } from "drizzle-orm";
-import { getDb, schema } from "../db/client";
+import { bulkInsert, getDb, onClose, schema } from "../db/client";
 import { newId, sha256 } from "../util/ids";
 import type { IngestSource, IngestStats, NormalizedFile } from "./types";
 import { encryptSecret } from "./credentials";
@@ -58,14 +58,14 @@ export function attachFiles(projectId: string, source: IngestSource, files: Norm
     const blobRows = new Map<string, { hash: string; content: string; size: number }>();
     for (const f of files) if (f.text !== undefined && !blobRows.has(f.hash)) blobRows.set(f.hash, { hash: f.hash, content: f.text, size: f.size });
     const blobList = [...blobRows.values()];
-    for (let i = 0; i < blobList.length; i += 200) tx.insert(schema.blobs).values(blobList.slice(i, i + 200)).onConflictDoNothing().run();
+    bulkInsert(schema.blobs, blobList, { ignoreConflicts: true });
     tx.delete(schema.files).where(eq(schema.files.projectId, projectId)).run();
     const rows = files.map((f) => ({
       id: newId("f"), projectId, path: f.path, name: f.name, directory: f.directory, extension: f.extension, language: f.language, size: f.size, lines: f.lines, hash: f.hash,
       classification: f.classification, isBinary: f.isBinary, isTest: f.isTest, isGenerated: f.isGenerated, isVendor: f.isVendor, isExcluded: f.isExcluded, excludeReason: f.excludeReason ?? null,
       isLarge: f.isLarge, hasContent: f.text !== undefined, duplicateOf: f.duplicateOf ?? null, parseStatus: "pending",
     }));
-    for (let i = 0; i < rows.length; i += 200) tx.insert(schema.files).values(rows.slice(i, i + 200)).run();
+    bulkInsert(schema.files, rows);
   });
   return incremental;
 }
@@ -88,13 +88,31 @@ export function getFileContent(hash: string): string | undefined {
   return db.select({ content: schema.blobs.content }).from(schema.blobs).where(eq(schema.blobs.hash, hash)).get()?.content;
 }
 
+/**
+ * Blobs are content-addressed, so a hash always maps to the same text and a cached copy can never be stale. One analysis
+ * reads every file's text in six different stages; keeping recent blobs in memory turns five of those reads into lookups.
+ * The cache is bounded by characters, evicting the oldest first.
+ */
+const BLOB_CACHE_CHARS = 48_000_000;
+const blobCache = new Map<string, string>();
+let blobCacheChars = 0;
+export function clearBlobCache(): void { blobCache.clear(); blobCacheChars = 0; }
+onClose(clearBlobCache);
+function rememberBlob(hash: string, content: string): void {
+  if (content.length > BLOB_CACHE_CHARS / 8 || blobCache.has(hash)) return;
+  blobCache.set(hash, content);
+  blobCacheChars += content.length;
+  for (const [k, v] of blobCache) { if (blobCacheChars <= BLOB_CACHE_CHARS) break; blobCache.delete(k); blobCacheChars -= v.length; }
+}
+
 export function getFileContents(hashes: string[]): Map<string, string> {
   const db = getDb();
   const out = new Map<string, string>();
-  const unique = [...new Set(hashes)];
-  for (let i = 0; i < unique.length; i += 500) {
-    const rows = db.select().from(schema.blobs).where(inArray(schema.blobs.hash, unique.slice(i, i + 500))).all();
-    for (const r of rows) out.set(r.hash, r.content);
+  const missing: string[] = [];
+  for (const h of new Set(hashes)) { const c = blobCache.get(h); if (c !== undefined) out.set(h, c); else missing.push(h); }
+  for (let i = 0; i < missing.length; i += 500) {
+    const rows = db.select().from(schema.blobs).where(inArray(schema.blobs.hash, missing.slice(i, i + 500))).all();
+    for (const r of rows) { out.set(r.hash, r.content); rememberBlob(r.hash, r.content); }
   }
   return out;
 }

@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { getDb, schema } from "../db/client";
+import { getDb, schema, projectRows } from "../db/client";
 import type { FindingRow, ProjectRow } from "../db/schema";
 import type { Architecture } from "../discover/types";
 import { buildBrief } from "../docs/brief";
@@ -20,7 +20,7 @@ export function loadReportData(projectId: string): ReportData {
   if (!project) throw new Error("Project not found");
   const analysis = (project.analysis ?? {}) as { architecture?: Architecture; docs?: DocReport };
   if (!analysis.architecture || !analysis.docs) throw new Error("The analysis has not finished, so there is no report yet.");
-  const findings = db.select().from(schema.findings).where(eq(schema.findings.projectId, projectId)).all().filter((f) => f.verification !== "rejected");
+  const findings = projectRows(schema.findings, projectId).filter((f) => f.verification !== "rejected");
   return { project, arch: analysis.architecture, docs: analysis.docs, findings };
 }
 
@@ -323,7 +323,7 @@ function codeMapMarkdown(projectId: string, project: ProjectRow, arch: Architect
     for (const n of mg.nodes.slice(0, 12)) out.push(`- \`${n.label}\``);
   } else {
     out.push(`Top ${mg.nodes.length} of ${mg.totalNodes} source files by importance (drill down by area in the application).\n`);
-    out.push(fence("mermaid", graphToMermaid(mg)));
+    out.push(fence("mermaid", graphToMermaid(mg, "LR", { grouped: true })));
   }
 
   sub(5, "API Map");

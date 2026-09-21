@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { getDb, schema } from "../db/client";
+import { getDb, schema, projectRows } from "../db/client";
 import type { Architecture } from "../discover/types";
 import { getAIProvider, renderEvidence, SAFETY_PREAMBLE, UsageMeter, tryAnalyze, untrusted } from "../ai";
 import { getFileContents } from "../ingest/store";
@@ -42,8 +42,7 @@ function cite(path: string, a: number, b: number, note?: string): Citation {
 
 /** Attach short code snippets to citations for display. */
 function withSnippets(projectId: string, cites: Citation[]): Citation[] {
-  const db = getDb();
-  const files = new Map(db.select().from(schema.files).where(eq(schema.files.projectId, projectId)).all().map((f) => [f.path, f]));
+  const files = new Map(projectRows(schema.files, projectId).map((f) => [f.path, f]));
   const contents = getFileContents(cites.map((c) => files.get(c.path)?.hash).filter((x): x is string => !!x));
   return cites.map((c) => {
     const f = files.get(c.path);
@@ -53,8 +52,7 @@ function withSnippets(projectId: string, cites: Citation[]): Citation[] {
 }
 
 function validateCitations(projectId: string, cites: Citation[]): Citation[] {
-  const db = getDb();
-  const files = new Map(db.select().from(schema.files).where(eq(schema.files.projectId, projectId)).all().map((f) => [f.path, f]));
+  const files = new Map(projectRows(schema.files, projectId).map((f) => [f.path, f]));
   const out: Citation[] = [];
   for (const c of cites) {
     const f = files.get(c.path);

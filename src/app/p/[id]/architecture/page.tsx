@@ -38,7 +38,7 @@ export default function ArchitecturePage() {
       <SectionTitle>System map</SectionTitle>
       <div className="grid gap-3 lg:grid-cols-2">
         <div className="card overflow-hidden"><div className="border-b border-line bg-panel2 px-3 py-1 text-xs text-muted">Layered view generated from detected relationships</div><pre tabIndex={0} className="!border-0 !rounded-none !bg-transparent" style={{ fontSize: 11 }}>{data.diagram.text}</pre></div>
-        <div><div className="mb-1 text-xs text-muted">Functional-area dependencies. Open the Code Map to drill down.</div>{areaGraph.data ? <GraphCanvas graph={areaGraph.data.graph} height={420} /> : <Loading label="Drawing diagram" />}</div>
+        <div><div className="mb-1 text-xs text-muted">Functional-area dependencies. Open the Code Map to drill down.</div>{areaGraph.data ? <GraphCanvas graph={areaGraph.data.graph} height={460} /> : <Loading label="Drawing diagram" />}</div>
       </div>
       <div className="text-sm"><Link href={`/p/${id}/map`}>Explore the interactive code map →</Link></div>
       <Legend />

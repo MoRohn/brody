@@ -1,11 +1,13 @@
 import { eq } from "drizzle-orm";
-import { getDb, schema } from "../db/client";
+import { getDb, schema, projectRows } from "../db/client";
 import type { FileRow, FindingRow, RelationshipRow, SymbolRow } from "../db/schema";
 import type { Architecture } from "../discover/types";
 import { AREA_HINTS } from "../discover/catalog";
 import { glyphFor, riskGlyph, type NodeType, type RiskLevel } from "./legend";
+import { layoutMap } from "./layout";
 
 export * from "./legend";
+export * from "./layout";
 
 export interface GraphNode {
   id: string;
@@ -17,6 +19,8 @@ export interface GraphNode {
   size: number;
   area?: string;
   group?: string;
+  /** One plain-language sentence about what this is, shown on the map card. */
+  description?: string;
   meta?: Record<string, unknown>;
 }
 export interface GraphEdge {
@@ -31,6 +35,8 @@ export interface Graph {
   edges: GraphEdge[];
   truncated: boolean;
   totalNodes: number;
+  /** The node the map is about (symbol maps), placed in the middle with callers to its left. */
+  focus?: string;
 }
 
 interface Model {
@@ -58,10 +64,10 @@ export function loadModel(projectId: string): Model {
   if (!project) throw new Error("Project not found");
   const hit = cache.get(projectId);
   if (hit && hit.stamp === project.updatedAt) return hit.model;
-  const files = db.select().from(schema.files).where(eq(schema.files.projectId, projectId)).all().filter((f) => !f.isExcluded);
-  const symbols = db.select().from(schema.symbols).where(eq(schema.symbols.projectId, projectId)).all();
-  const rels = db.select().from(schema.relationships).where(eq(schema.relationships.projectId, projectId)).all();
-  const findings = db.select().from(schema.findings).where(eq(schema.findings.projectId, projectId)).all().filter((f) => f.verification !== "rejected");
+  const files = projectRows(schema.files, projectId).filter((f) => !f.isExcluded);
+  const symbols = projectRows(schema.symbols, projectId);
+  const rels = projectRows(schema.relationships, projectId);
+  const findings = projectRows(schema.findings, projectId).filter((f) => f.verification !== "rejected");
   const arch = ((project.analysis ?? {}) as { architecture?: Architecture }).architecture as Architecture;
   const filesById = new Map(files.map((f) => [f.id, f]));
   const filesByPath = new Map(files.map((f) => [f.path, f]));
@@ -150,9 +156,8 @@ export interface TreeNode {
 }
 
 export function repositoryTree(projectId: string, opts: { includeExcluded?: boolean } = {}): TreeNode {
-  const db = getDb();
   const m = loadModel(projectId);
-  const rows = opts.includeExcluded ? db.select().from(schema.files).where(eq(schema.files.projectId, projectId)).all() : m.files;
+  const rows = opts.includeExcluded ? projectRows(schema.files, projectId) : m.files;
   const root: TreeNode = { name: "", path: "", type: "dir", children: [], files: 0 };
   const dirRoles = new Map<string, Map<string, number>>();
   for (const f of rows) {
@@ -219,7 +224,7 @@ export function areaGraph(projectId: string): Graph {
     if (a.role === "docs") continue;
     const risk = a.files.reduce<RiskLevel>((acc, p) => { const r = m.fileRisk.get(p) ?? "none"; return RISK_BY_RANK.indexOf(r) > RISK_BY_RANK.indexOf(acc) ? r : acc; }, "none");
     const type: NodeType = a.role === "ui" ? "ui" : a.role === "api" ? "api" : a.role === "data" || a.role === "schema" ? "model" : a.role === "test" ? "test" : a.role === "config" ? "config" : a.role === "infra" ? "infra" : a.role === "job" ? "job" : a.role === "entry" ? "entry" : a.role === "util" ? "util" : "service";
-    nodes.set(a.name, { id: a.name, label: a.name, type, risk, size: a.files.length, area: a.name, group: "area", meta: { files: a.files.length, role: a.role } });
+    nodes.set(a.name, { id: a.name, label: a.name, type, risk, size: a.files.length, area: a.name, group: "area", description: a.description, meta: { files: a.files.length, role: a.role, routes: a.routes.length, models: a.models.length } });
   }
   const weights = new Map<string, number>();
   for (const [a, targets] of m.fileEdges) for (const [b, e] of targets) {
@@ -231,13 +236,15 @@ export function areaGraph(projectId: string): Graph {
   // External services as star nodes
   for (const s of m.arch.externalServices.filter((x) => !["ai-framework", "observability", "analytics"].includes(x.category)).slice(0, 12)) {
     const id = `ext:${s.name}`;
-    nodes.set(id, { id, label: s.name, type: "external", risk: "none", size: 1, group: "external", meta: { category: s.category } });
+    nodes.set(id, { id, label: s.name, type: "external", risk: "none", size: 1, group: "external", description: `Third-party ${s.category.replace(/-/g, " ")} service the system relies on.`, meta: { category: s.category } });
     const areas = new Map<string, number>();
     for (const e of s.evidence) { const a = areaOf(e.path); if (a && nodes.has(a)) areas.set(a, (areas.get(a) ?? 0) + 1); }
     for (const [a, w] of areas) edges.push({ id: `${a}->${id}`, source: a, target: id, kind: "OPTIONAL", weight: w });
   }
   return { nodes: [...nodes.values()], edges, truncated: false, totalNodes: nodes.size };
 }
+
+const fileDescription = (f: FileRow) => { const role = f.role ? roleDescription[f.role] : undefined; return role ? `Part of the ${role}${f.area ? ` · ${f.area}` : ""}` : f.area ? `Part of ${f.area}` : undefined; };
 
 export function moduleGraph(projectId: string, opts: { area?: string; directory?: string; limit?: number } = {}): Graph {
   const m = loadModel(projectId);
@@ -248,7 +255,7 @@ export function moduleGraph(projectId: string, opts: { area?: string; directory?
   const total = files.length;
   files = files.sort((a, b) => b.importance - a.importance).slice(0, limit);
   const ids = new Set(files.map((f) => f.path));
-  const nodes: GraphNode[] = files.map((f) => ({ id: f.path, label: f.name, type: nodeTypeForFile(f), path: f.path, line: 1, risk: m.fileRisk.get(f.path) ?? "none", size: Math.max(1, Math.round(f.importance * 10)), area: f.area ?? undefined, meta: { lines: f.lines, role: f.role } }));
+  const nodes: GraphNode[] = files.map((f) => ({ id: f.path, label: f.name, type: nodeTypeForFile(f), path: f.path, line: 1, risk: m.fileRisk.get(f.path) ?? "none", size: Math.max(1, Math.round(f.importance * 10)), area: f.area ?? undefined, description: fileDescription(f), meta: { lines: f.lines, role: f.role } }));
   const edges: GraphEdge[] = [];
   for (const a of ids) for (const [b, e] of m.fileEdges.get(a) ?? []) if (ids.has(b)) edges.push({ id: `${a}->${b}`, source: a, target: b, kind: e.kind, weight: e.weight });
   return { nodes, edges, truncated: total > files.length, totalNodes: total };
@@ -344,7 +351,7 @@ export function symbolGraph(projectId: string, symbolId: string, depth = 1, limi
     }
     frontier = next;
   }
-  return { nodes: [...nodes.values()], edges, truncated: nodes.size >= limit, totalNodes: nodes.size };
+  return { nodes: [...nodes.values()], edges, truncated: nodes.size >= limit, totalNodes: nodes.size, focus: start.id };
 }
 
 // ---------------------------------------------------------------------------
@@ -490,23 +497,41 @@ export function architectureDiagramText(projectId: string): string {
 function mermaidId(s: string): string { return "n" + s.replace(/[^A-Za-z0-9]/g, "_").slice(0, 50) + "_" + Math.abs([...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)).toString(36); }
 const mmLabel = (s: string) => s.replace(/"/g, "'").replace(/[\[\]{}()<>]/g, " ").slice(0, 48);
 
-export function graphToMermaid(g: Graph, direction: "LR" | "TD" = "LR"): string {
+export function graphToMermaid(g: Graph, direction: "LR" | "TD" = "LR", opts: { grouped?: boolean } = {}): string {
   const lines = [`flowchart ${direction}`];
-  for (const n of g.nodes) {
+  const nodeLine = (n: GraphNode) => {
     const label = `${glyphFor(n.type)} ${mmLabel(n.label)}${n.risk !== "none" ? ` ${riskGlyph(n.risk)}` : ""}`;
     const id = mermaidId(n.id);
     const shape = n.type === "model" ? `${id}{{"${label}"}}` : n.type === "external" ? `${id}(["${label}"])` : n.type === "api" ? `${id}[/"${label}"/]` : n.type === "entry" ? `${id}(("${label}"))` : `${id}["${label}"]`;
-    lines.push(`  ${shape}`);
+    return shape;
+  };
+  if (!opts.grouped) {
+    for (const n of g.nodes) lines.push(`  ${nodeLine(n)}`);
+    for (const e of g.edges) lines.push(`  ${mermaidEdge(e)}`);
+    return lines.join("\n");
   }
-  for (const e of g.edges) {
-    const arrow = e.kind === "IMPORTS" ? "-.->" : e.kind === "OPTIONAL" ? "-.->" : e.kind === "WRITES_TO" ? "==>" : "-->";
-    lines.push(`  ${mermaidId(e.source)} ${arrow}${e.weight > 1 ? `|${e.weight}|` : ""} ${mermaidId(e.target)}`);
+  // Grouped: the same layers and the same visible links as the app's map, so a copied diagram reads like the screen.
+  const layout = layoutMap(g, { mode: g.focus ? "symbol" : "area" });
+  const byId = new Map(g.nodes.map((n) => [n.id, n]));
+  for (const band of layout.bands) {
+    const members = layout.nodes.filter((p) => p.lane === band.id).map((p) => byId.get(p.id)!).filter(Boolean);
+    if (!members.length) continue;
+    lines.push(`  subgraph ${mermaidId(`lane:${band.id}`)}["${mmLabel(band.label)}"]`);
+    for (const n of members) lines.push(`    ${nodeLine(n)}`);
+    lines.push("  end");
   }
+  for (const e of layout.edges) if (e.tier === "primary") lines.push(`  ${mermaidEdge(e)}`);
+  if (layout.hiddenCount) lines.push(`  %% ${layout.hiddenCount} secondary link${layout.hiddenCount === 1 ? "" : "s"} omitted for readability`);
   return lines.join("\n");
 }
 
+function mermaidEdge(e: { source: string; target: string; kind: string; weight: number }): string {
+  const arrow = e.kind === "IMPORTS" ? "-.->" : e.kind === "OPTIONAL" ? "-.->" : e.kind === "WRITES_TO" ? "==>" : "-->";
+  return `${mermaidId(e.source)} ${arrow}${e.weight > 1 ? `|${e.weight}|` : ""} ${mermaidId(e.target)}`;
+}
+
 export function architectureMermaid(projectId: string): string {
-  return graphToMermaid(areaGraph(projectId), "LR");
+  return graphToMermaid(areaGraph(projectId), "LR", { grouped: true });
 }
 
 /** Entity names must be unique and made of word characters. Same-named models in different files get a folder or file suffix. */
