@@ -38,7 +38,7 @@ function draw(doc: Doc, p: Prim): void {
     }
     case "ellipse": {
       doc.save();
-      const f = fill(doc, p.fill), s = stroke(doc, p.stroke, p.sw ?? 1);
+      const f = fill(doc, p.fill, p.opacity), s = stroke(doc, p.stroke, p.sw ?? 1, p.opacity);
       doc.ellipse((p.x + p.w / 2) * K, (p.y + p.h / 2) * K, (p.w / 2) * K, (p.h / 2) * K);
       if (f || s) paint(doc, f, s);
       doc.restore();

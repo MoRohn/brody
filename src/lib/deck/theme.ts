@@ -20,9 +20,18 @@ export const C = {
   info: "#7A8CA0",
   ok: "#1B7F4B",
   white: "#FFFFFF",
+  mist: "#F1F6FA",
+  mist2: "#E3EDF4",
+  rule: "#D5E1EA",
+  good: "#1B7F4B",
+  watch: "#D98A00",
+  act: "#C7372F",
+  deep: "#0B2436",
 } as const;
 
 export const SEVERITY_COLOR: Record<string, string> = { Critical: C.crit, High: C.high, Medium: C.med, Low: C.low, Informational: C.info };
+export const STATUS_COLOR: Record<string, string> = { good: C.good, watch: C.watch, act: C.act };
+export const STATUS_LABEL: Record<string, string> = { good: "On track", watch: "Watch", act: "Needs attention" };
 export const PRIORITY_COLOR: Record<string, string> = { Now: C.crit, Next: C.accent, Later: C.info };
 
 /** Font families per renderer. The layout is measured with DejaVu (the report PDF's face), which is at least as wide as these. */
@@ -31,5 +40,5 @@ export const FONTS: Record<FontKind, { css: string; pptx: string }> = {
   serif: { css: 'Georgia, "Playfair Display", "Times New Roman", serif', pptx: "Georgia" },
 };
 
-export const MARGIN = 56;
-export const BODY = { x: MARGIN, y: 122, w: 1280 - MARGIN * 2, h: 548 };
+export const MARGIN = 64;
+export const BODY = { x: MARGIN, y: 164, w: 1280 - MARGIN * 2, h: 496 };

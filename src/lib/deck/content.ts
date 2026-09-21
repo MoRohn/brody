@@ -15,16 +15,18 @@ import { exposureFor, firstSentence, humanizeFlow, isExecutiveWording, issueFor,
  * It is stored with the project by the "Building executive deck" stage, and laid out and rendered at export time.
  */
 export type Risk = "none" | "low" | "medium" | "high" | "critical";
+/** good: on track, watch: sound with gaps, act: needs attention. */
+export type Status = "good" | "watch" | "act";
 export interface Sev { critical: number; high: number; medium: number; low: number }
 
 export interface DeckContent {
-  version: 1;
+  version: 2;
   generatedAt: number;
   origin: "deterministic" | "ai";
   project: { name: string; source?: string; branch?: string; commit?: string };
   headline: string;
   summary: string;
-  kpis: { label: string; value: string }[];
+  kpis: { label: string; value: string; note?: string }[];
   keyPoints: { title: string; detail: string }[];
   capabilities: { name: string; line: string; files: number; risk: Risk; role: string; usedBy: number }[];
   architecture: {
@@ -37,8 +39,10 @@ export interface DeckContent {
   flows: { name: string; path: string[]; externals: string[] }[];
   data: { models: number; relations: number; stores: string[]; entities: { name: string; fields: number; links: number }[] };
   integrations: { name: string; category: string; purpose: string; ifDown: string }[];
+  scorecard: { key: string; name: string; status: Status; sev: Sev; evidence: string }[];
   quality: {
     total: number;
+    level: Status;
     verdict: string;
     strengths: string[];
     severity: { label: string; count: number }[];
@@ -66,6 +70,7 @@ const SEV_ORDER = ["Critical", "High", "Medium", "Low", "Informational"];
 const emptySev = (): Sev => ({ critical: 0, high: 0, medium: 0, low: 0 });
 const weight = (s: Sev) => s.critical * 10 + s.high * 5 + s.medium * 2 + s.low;
 const bump = (s: Sev, severity: string) => { const k = severity.toLowerCase(); if ((SEV_KEYS as readonly string[]).includes(k)) s[k as keyof Sev]++; };
+const plural = (n: number, w: string) => `${n.toLocaleString()} ${w}${n === 1 ? "" : "s"}`;
 const sentence = (t: string) => (t ? `${t.charAt(0).toUpperCase()}${t.slice(1)}` : t);
 
 /** "receipt_queue" and "OrderItem" both become "Receipt queue" / "Order item". */
@@ -130,15 +135,22 @@ export function buildDeckContent(projectId: string): DeckContent {
 
   // ---- capabilities ------------------------------------------------------------------------------------------------------
   const purposeOf = new Map(docs.areas.map((a) => [a.name, a.purpose]));
+  // Several areas can share a role; give each its own sentence rather than repeating the generic one.
+  const usedLines = new Set<string>();
+  const uniqueRoleLine = (a: { name: string; role: string }, _i: number, _all: unknown[]): string => {
+    const generic = roleText(a.role);
+    if (!usedLines.has(generic)) { usedLines.add(generic); return generic; }
+    return `Supports ${a.name.toLowerCase()} across the system.`;
+  };
   const capabilities = arch.areas
     .filter((a) => !SUPPORT_AREAS.has(a.name) && a.role !== "docs")
     .sort((a, b) => b.files.length - a.files.length)
     .slice(0, 8)
-    .map((a) => {
+    .map((a, i, all) => {
       // With AI the brief already words each capability for a business reader; without it, say what kind of capability this is.
       const fromBrief = brief.origin === "ai" ? brief.capabilities.find((c) => c.startsWith(`${a.name}:`))?.slice(a.name.length + 1).trim() : undefined;
       const purpose = plainText(purposeOf.get(a.name) ?? a.description);
-      return { name: a.name, line: firstSentence(fromBrief || (isExecutiveWording(purpose) ? purpose : roleText(a.role)), 110), files: a.files.length, risk: areaRisk(a.name), role: a.role, usedBy: a.usedBy.length };
+      return { name: a.name, line: firstSentence(fromBrief || (isExecutiveWording(purpose) ? purpose : uniqueRoleLine(a, i, all)), 110), files: a.files.length, risk: areaRisk(a.name), role: a.role, usedBy: a.usedBy.length };
     });
 
   // ---- architecture, from the same layered layout the Code Map uses ----------------------------------------------------
@@ -216,24 +228,70 @@ export function buildDeckContent(projectId: string): DeckContent {
     { label: "No credentials found in the code", ok: arch.secrets.length === 0 && !has("Credentials exposed in the code") },
   ];
 
+  const apiRoutes = arch.routes.filter((r) => r.kind === "api");
+  const kpiNote = (label: string): string | undefined => {
+    switch (label) {
+      case "Source files": return `${plural(arch.stack.languages.length, "language")}`;
+      case "Lines of code": { const n = arch.stats.sourceFiles || 1; return `about ${Math.round((arch.stats.lines ?? 0) / n).toLocaleString()} per file`; }
+      case "Main languages": return topLang[0] ? `${Math.round(topLang[0].share * 100)}% ${topLang[0].name}` : undefined;
+      case "Functional areas": return "distinct capabilities";
+      case "API routes": { const n = apiRoutes.filter((r) => r.auth === "authenticated").length; return n ? `${n} check who is calling` : undefined; }
+      case "Data models": return relations ? plural(relations, "relationship") : undefined;
+      case "External services": return arch.externalServices.slice(0, 2).map((e) => e.name).join(", ") || undefined;
+      case "Critical or high findings": return `of ${plural(live.length, "finding")} in total`;
+      default: return undefined;
+    }
+  };
+
   const coverage = Object.entries(arch.tests.coverageByArea).filter(([, v]) => v.total > 0).map(([area, v]) => ({ area, tested: v.tested, total: v.total })).sort((a, b) => b.total - a.total).slice(0, 8);
 
+  // ---- health scorecard: six dimensions an executive asks about, each rated from the same findings the report lists -------
+  const DIMENSIONS: { key: string; name: string; categories: string[] }[] = [
+    { key: "security", name: "Security and data protection", categories: ["Security"] },
+    { key: "reliability", name: "Reliability", categories: ["Reliability", "Correctness", "Data"] },
+    { key: "quality", name: "Quality assurance", categories: ["Testing"] },
+    { key: "maintain", name: "Maintainability", categories: ["Maintainability", "Architecture", "API Design"] },
+    { key: "ops", name: "Operational readiness", categories: ["Operations", "Performance"] },
+    { key: "delivery", name: "Third-party and delivery", categories: ["Dependencies"] },
+  ];
+  // The same rule the report's executive summary uses: a critical issue needs attention, a high one is worth fixing soon.
+  const statusOf = (s: Sev): Status => (s.critical > 0 ? "act" : s.high > 0 || s.medium >= 3 ? "watch" : "good");
+  const scorecard = DIMENSIONS.map((d) => {
+    const mine = live.filter((f) => d.categories.includes(f.category));
+    const sev = emptySev();
+    for (const f of mine) bump(sev, f.severity);
+    let status = statusOf(sev);
+    const top = [...mine].sort((a, b) => sevIdx(a) - sevIdx(b))[0];
+    let evidence = top ? exposureFor(top) : "No significant issues were found.";
+    if (d.key === "quality") {
+      if (arch.tests.files.length === 0) { status = "act"; evidence = "No automated tests were found."; }
+      else if (arch.tests.untestedCritical.length > 0 && status === "good") { status = "watch"; evidence = `${plural(arch.tests.untestedCritical.length, "important file")} not covered by tests.`; }
+    }
+    return { key: d.key, name: d.name, status, sev, evidence };
+  });
+  const level: Status = statusOf(total);
+
   return {
-    version: 1,
+    version: 2,
     generatedAt: Date.now(),
     origin: brief.origin,
     project: { name: project.name, source: project.sourceUrl ?? undefined, branch: project.branch ?? undefined, commit: project.commit ? project.commit.slice(0, 10) : undefined },
     headline: firstSentence(brief.headline.replace(new RegExp(`^${project.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:\\s*`), ""), 170),
     summary: plainText(brief.summary),
-    kpis: brief.metrics.map((m) => ({ label: m.label, value: m.value })),
-    keyPoints: brief.keyPoints.filter((k) => k.title !== "What to do next" && k.title !== "What it is").map((k) => ({ title: k.title, detail: sentence(firstSentence(k.detail, 170)) })),
+    kpis: brief.metrics.map((m) => ({ label: m.label, value: m.value, note: kpiNote(m.label) })),
+    keyPoints: [
+      { title: "How it is built", detail: `${sentence(arch.pattern.label)}${frameworks.length ? `, built with ${frameworks.slice(0, 3).join(", ").replace(/, ([^,]*)$/, " and $1")}` : ""}. ${(stats.sourceFiles ?? 0).toLocaleString()} source files, mostly ${topLang[0]?.name ?? "one language"}.` },
+      { title: "What it does", detail: `${brief.metrics.find((m) => m.label === "Functional areas")?.value ?? capabilities.length} functional areas, led by ${capabilities.slice(0, 3).map((a) => a.name).join(", ").replace(/, ([^,]*)$/, " and $1") || "its main capabilities"}.` },
+      { title: "Where the risk is", detail: plainText(brief.health.verdict) },
+    ],
     capabilities,
     architecture: { pattern: sentence(arch.pattern.label), lanes, links, foundation },
     tech, flows,
     data: { models: arch.models.length, relations, stores: arch.stack.databases.slice(0, 4), entities },
     integrations,
+    scorecard,
     quality: {
-      total: live.length, verdict: plainText(brief.health.verdict), strengths: brief.health.strengths.map((s) => plainText(s)).slice(0, 4),
+      total: live.length, level, verdict: plainText(brief.health.verdict), strengths: brief.health.strengths.map((s) => plainText(s)).slice(0, 4),
       severity: [{ label: "Critical", count: total.critical }, { label: "High", count: total.high }, { label: "Medium", count: total.medium }, { label: "Low", count: total.low }],
       themes, areaRisk: [...riskByArea.entries()].sort((a, b) => weight(b[1]) - weight(a[1])).slice(0, 6).map(([area, sev]) => ({ area, sev })), priorities,
     },
@@ -249,7 +307,7 @@ export function ensureDeckContent(projectId: string): DeckContent {
   const db = getDb();
   const p = db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get();
   const stored = (p?.analysis as { deck?: DeckContent } | null)?.deck;
-  if (stored?.version === 1) return stored;
+  if (stored?.version === 2) return stored;
   const deck = buildDeckContent(projectId);
   saveDeckContent(projectId, deck);
   return deck;

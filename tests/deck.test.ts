@@ -3,7 +3,7 @@ import { unzipSync, strFromU8 } from "fflate";
 import { beforeAll, describe, expect, it } from "vitest";
 import { GET as deckRoute } from "@/app/api/projects/[id]/deck/route";
 import { getDb, projectRows, schema } from "@/lib/db/client";
-import { buildDeckContent, deckSlides, ensureDeckContent, exportDeck, layoutDeck, type DeckContent } from "@/lib/deck";
+import { buildDeckContent, deckOutline, deckSlides, ensureDeckContent, exportDeck, layoutDeck, type DeckContent } from "@/lib/deck";
 import { exposureFor, humanizeFlow, issueFor, plainText, RULES_WITH_WORDING, TECHNICAL_TOKENS } from "@/lib/deck/lexicon";
 import { textWidth } from "@/lib/deck/measure";
 import { H, slideText, W } from "@/lib/deck/scene";
@@ -31,15 +31,27 @@ describe("executive deck: the pipeline step", () => {
     expect(keys.slice(-3)).toEqual(["map", "deck", "finalize"]);
     const stage = getJob(jobId)!.stages.find((s) => s.key === "deck")!;
     expect(stage.status).toBe("done");
-    expect(stage.detail).toMatch(/13 slides/);
+    expect(stage.detail).toMatch(/14 slides/);
   });
 
   it("stores its content with the analysis, beside the report's data", () => {
     const p = getDb().select().from(schema.projects).where(eq(schema.projects.id, pid)).get()!;
     const stored = (p.analysis as { deck?: DeckContent; docs?: unknown; architecture?: unknown }).deck!;
-    expect(stored.version).toBe(1);
+    expect(stored.version).toBe(2);
     expect((p.analysis as { docs?: unknown }).docs).toBeTruthy();
     expect(JSON.stringify(stored).length).toBeLessThan(60_000); // a compact snapshot, not a copy of the report
+  });
+
+  it("rebuilds a snapshot saved by an older deck version instead of failing on it", () => {
+    const p = getDb().select().from(schema.projects).where(eq(schema.projects.id, pid)).get()!;
+    const analysis = p.analysis as { deck: Record<string, unknown> };
+    const stale: Record<string, unknown> = { ...analysis.deck, version: 1 };
+    delete stale.scorecard;
+    getDb().update(schema.projects).set({ analysis: { ...analysis, deck: stale } }).where(eq(schema.projects.id, pid)).run();
+    const fresh: DeckContent = ensureDeckContent(pid);
+    expect(fresh.version).toBe(2);
+    expect(fresh.scorecard.length).toBe(6);
+    expect(layoutDeck(fresh).slides.length).toBe(14);
   });
 
   it("is built on first request for a project analysed before the deck existed", async () => {
@@ -65,7 +77,7 @@ describe("executive deck: one set of facts with the report", () => {
   it("uses the report's own numbers and finding references", () => {
     const { arch, docs, findings } = loadReportData(pid);
     const md = buildMarkdown(pid);
-    expect(content.kpis).toEqual(docs.brief!.metrics);
+    expect(content.kpis.map((k) => ({ label: k.label, value: k.value }))).toEqual(docs.brief!.metrics);
     expect(content.quality.total).toBe(findings.length);
     const bySeverity = (s: string) => findings.filter((f) => f.severity === s).length;
     expect(content.quality.severity.map((s) => s.count)).toEqual(["Critical", "High", "Medium", "Low"].map(bySeverity));
@@ -82,12 +94,49 @@ describe("executive deck: one set of facts with the report", () => {
     const deck = deckSlides(pid);
     for (const s of deck.slides.filter((x) => !x.dark)) if (s.id !== "coverage") expect(s.ref, s.id).toMatch(/^§\d+ /);
     const last = slideText(deck.slides[deck.slides.length - 1]).join(" ");
-    for (const s of deck.slides.filter((x) => x.ref && x.id !== "coverage")) expect(last, s.id).toContain(s.title.slice(0, 12));
+    for (const s of deck.slides.filter((x) => x.ref && x.id !== "coverage")) expect(last, s.id).toContain(s.kicker.slice(0, 12));
+    expect(new Set(deck.slides.filter((x) => !x.dark).map((x) => x.kicker)).size).toBe(deck.slides.filter((x) => !x.dark).length); // the map is unambiguous
+  });
+});
+
+describe("executive deck: rating and scorecard", () => {
+  it("rates the system by the same rule as the report's executive summary", () => {
+    const { docs, findings } = loadReportData(pid);
+    const reportSays = /^needs attention/i.test(docs.brief!.health.verdict) ? "act" : /^generally sound/i.test(docs.brief!.health.verdict) ? "watch" : "good";
+    expect(content.quality.level).toBe(reportSays);
+    const critical = findings.filter((f) => f.severity === "Critical").length, high = findings.filter((f) => f.severity === "High").length;
+    expect(content.quality.level).toBe(critical > 0 ? "act" : high > 0 ? "watch" : content.quality.level === "watch" ? "watch" : "good");
+  });
+
+  it("scores six dimensions from the findings, each with a status word and evidence", () => {
+    expect(content.scorecard.map((d) => d.key)).toEqual(["security", "reliability", "quality", "maintain", "ops", "delivery"]);
+    const { findings } = loadReportData(pid);
+    const sec = content.scorecard.find((d) => d.key === "security")!;
+    expect(sec.sev.critical + sec.sev.high + sec.sev.medium + sec.sev.low).toBe(findings.filter((f) => f.category === "Security" && ["Critical", "High", "Medium", "Low"].includes(f.severity)).length);
+    expect(sec.status).toBe(sec.sev.critical > 0 ? "act" : sec.sev.high > 0 || sec.sev.medium >= 3 ? "watch" : "good");
+    for (const d of content.scorecard) expect(d.evidence.length, d.key).toBeGreaterThan(5);
+    const text = slideText(deckSlides(pid).slides[2]).join(" ");
+    expect(text).toMatch(/On track|Watch|Needs attention/);
+  });
+
+  it("gives each slide an insight title rather than a topic label", () => {
+    const deck = deckSlides(pid);
+    const titles = deck.slides.filter((s) => !s.dark).map((s) => s.title);
+    expect(new Set(titles).size).toBe(titles.length);
+    expect(titles.filter((t) => /\d/.test(t)).length).toBeGreaterThan(6); // most titles carry a number from the analysis
+    expect(titles.some((t) => /^(Overview|Summary|Details)$/i.test(t))).toBe(false);
+  });
+
+  it("never repeats a product name or drops one (Next.js is a product, not a file)", () => {
+    expect(plainText("It is built with Next.js, Node.js and React.")).toBe("It is built with Next.js, Node.js and React.");
+    expect(plainText("Edit orders.ts and src/app.js, not Next.js.")).toBe("Edit the code and the code, not Next.js.");
+    const text = deckSlides(pid).slides.flatMap((s) => slideText(s)).join(" ");
+    expect(text).not.toMatch(/built with the code|using the code|, the code,/);
   });
 });
 
 describe("executive deck: language", () => {
-  const BRANDS = /\b(TypeScript|JavaScript|PostgreSQL|MySQL|GitHub|GraphQL|Nodemailer|SQLite|OpenAI|DeepSeek)\b/g;
+  const BRANDS = /\b(TypeScript|JavaScript|PostgreSQL|MySQL|GitHub|GraphQL|Nodemailer|SQLite|OpenAI|DeepSeek|Next\.js|Node\.js|Vue\.js|Express\.js|Nuxt\.js|Nest\.js)\b/g;
   it("keeps technical tokens off every slide", () => {
     const deck = deckSlides(pid);
     const leaks: string[] = [];
@@ -130,9 +179,9 @@ describe("executive deck: language", () => {
 });
 
 describe("executive deck: layout", () => {
-  it("draws 13 slides that stay inside the page, with every line of text inside its box", () => {
+  it("draws 14 slides that stay inside the page, with every line of text inside its box", () => {
     const deck = deckSlides(pid);
-    expect(deck.slides).toHaveLength(13);
+    expect(deck.slides).toHaveLength(14);
     const problems: string[] = [];
     for (const s of deck.slides) for (const p of s.prims) {
       if (p.t === "text") {
@@ -153,12 +202,12 @@ describe("executive deck: layout", () => {
       ...content, capabilities: [], flows: [], integrations: [], actions: [],
       data: { models: 0, relations: 0, stores: [], entities: [] },
       architecture: { pattern: "Small script", lanes: [], links: [], foundation: [] },
-      quality: { total: 0, verdict: "No issues were found by the analysis.", strengths: [], severity: [{ label: "Critical", count: 0 }, { label: "High", count: 0 }, { label: "Medium", count: 0 }, { label: "Low", count: 0 }], themes: [], areaRisk: [], priorities: [] },
+      scorecard: [], quality: { total: 0, level: "good" as const, verdict: "No issues were found by the analysis.", strengths: [], severity: [{ label: "Critical", count: 0 }, { label: "High", count: 0 }, { label: "Medium", count: 0 }, { label: "Low", count: 0 }], themes: [], areaRisk: [], priorities: [] },
       testing: { files: 0, frameworks: [], coverage: [], untestedCritical: 0, readiness: [] },
     };
     const deck = layoutDeck(empty);
-    expect(deck.slides).toHaveLength(13);
-    expect(slideText(deck.slides[9]).join(" ")).toMatch(/No serious issues|No findings/);
+    expect(deck.slides).toHaveLength(14);
+    expect(slideText(deck.slides[10]).join(" ")).toMatch(/No serious issues|No findings/);
   });
 
   it("copes with long names and large numbers", () => {
@@ -172,7 +221,7 @@ describe("executive deck: the three formats", () => {
     const f = await exportDeck(pid, "html");
     const html = String(f.body);
     expect(f.contentType).toMatch(/text\/html/);
-    expect((html.match(/<section class="slide"/g) ?? []).length).toBe(13);
+    expect((html.match(/<section class="slide"/g) ?? []).length).toBe(14);
     expect(html).toContain("Speaker notes");
     expect(html).not.toMatch(/(?:src|href)="https?:/);
     expect(html).toContain("@media print");
@@ -181,23 +230,28 @@ describe("executive deck: the three formats", () => {
     expect(html).toMatch(/\.slide\{display:block/);
     expect(html).toMatch(/\.js \.slide\{display:none\}/);
     expect(html).toContain("classList.add('js')");
+    // State classes on <html> must not also be classes of elements: a rule such as ".rail{display:none}" would then hide the whole page.
+    const elementClasses = new Set([...html.matchAll(/class="([^"]+)"/g)].flatMap((m) => m[1].split(/\s+/)));
+    const stateClasses = [...html.matchAll(/(?:classList\.(?:add|toggle|contains)|flag)\('([\w-]+)'/g)].map((m) => m[1]).filter((c) => !["on", "js"].includes(c));
+    expect(stateClasses.length).toBeGreaterThan(2);
+    for (const c of stateClasses) expect(elementClasses.has(c), `state class "${c}" is also used by an element`).toBe(false);
   });
 
   it("PDF has one landscape 16:9 page per slide", async () => {
     const f = await exportDeck(pid, "pdf");
     const pdf = (f.body as Buffer).toString("latin1");
     expect(pdf.startsWith("%PDF")).toBe(true);
-    expect((pdf.match(/\/Type \/Page\b/g) ?? []).length).toBe(13);
+    expect((pdf.match(/\/Type \/Page\b/g) ?? []).length).toBe(14);
     expect(pdf).toMatch(/\/MediaBox \[0 0 960 540\]/);
   });
 
-  it("PowerPoint has 13 slides with speaker notes, native tables and well-formed XML", async () => {
+  it("PowerPoint has 14 slides with speaker notes, native tables and well-formed XML", async () => {
     const f = await exportDeck(pid, "pptx");
     expect(f.filename).toMatch(/-executive-summary\.pptx$/);
     const files = unzipSync(new Uint8Array(f.body as Buffer));
     const slides = Object.keys(files).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n));
-    expect(slides).toHaveLength(13);
-    expect(Object.keys(files).filter((n) => /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(n))).toHaveLength(13);
+    expect(slides).toHaveLength(14);
+    expect(Object.keys(files).filter((n) => /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(n))).toHaveLength(14);
     let tables = 0;
     for (const n of slides) {
       const xml = strFromU8(files[n]);
@@ -212,7 +266,7 @@ describe("executive deck: the three formats", () => {
     }
     expect(tables).toBeGreaterThanOrEqual(4);
     expect(strFromU8(files["ppt/presProps.xml"] ?? new Uint8Array())).toBeDefined();
-    const notes = strFromU8(files["ppt/notesSlides/notesSlide2.xml"]);
+    const notes = strFromU8(files["ppt/notesSlides/notesSlide3.xml"]);
     expect(notes).toMatch(/Detail:/);
   });
 
@@ -224,6 +278,16 @@ describe("executive deck: the three formats", () => {
 });
 
 describe("executive deck: API", () => {
+  it("lists the slides, with the report section each points to, for the app page", async () => {
+    const res = await deckRoute(new Request(`http://localhost/api/projects/${pid}/deck?format=outline`), ctx(pid));
+    expect(res.status).toBe(200);
+    const o = await res.json();
+    expect(o.slides).toHaveLength(14);
+    expect(o.slides[0]).toMatchObject({ n: 1, id: "title" });
+    expect(o.slides.filter((x: { ref?: string }) => x.ref).length).toBeGreaterThanOrEqual(12);
+    expect(o).toEqual(JSON.parse(JSON.stringify(deckOutline(pid))));
+  });
+
   it("serves each format with the right headers, inline where a browser can show it", async () => {
     const html = await deckRoute(new Request(`http://localhost/api/projects/${pid}/deck?format=html&download=0`), ctx(pid));
     expect(html.status).toBe(200);

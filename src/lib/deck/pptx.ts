@@ -33,7 +33,7 @@ function add(pptx: PptxGenJS, slide: Slide, p: Prim): void {
       return;
     }
     case "ellipse":
-      slide.addShape(T.ellipse, { x: inch(p.x), y: inch(p.y), w: inch(p.w), h: inch(p.h), fill: fillOf(p.fill) ?? { type: "none" }, line: lineOf(p.stroke, p.sw ?? 1) ?? { type: "none" } });
+      slide.addShape(T.ellipse, { x: inch(p.x), y: inch(p.y), w: inch(p.w), h: inch(p.h), fill: fillOf(p.fill, p.opacity) ?? { type: "none" }, line: lineOf(p.stroke, p.sw ?? 1, p.opacity) ?? { type: "none" } });
       return;
     case "poly": {
       if (p.pts.length < 2) return;
@@ -64,7 +64,7 @@ function add(pptx: PptxGenJS, slide: Slide, p: Prim): void {
         text: c.lines.join("\n") || " ",
         options: { fontFace: FONTS.sans.pptx, fontSize: pt(c.size), bold: !!c.bold, color: splitColor(c.pill ?? c.color).hex, align: c.align === "l" ? "left" : c.align === "c" ? "center" : "right", valign: "middle", fill: c.fill ? { color: splitColor(c.fill).hex } : undefined, margin: [pt(4), pt(10), pt(4), pt(10)] },
       })));
-      slide.addTable(rows as never, { x: inch(p.x), y: inch(p.y), w: inch(p.cols.reduce((a, b) => a + b, 0)), h: inch(p.rowH.reduce((a, b) => a + b, 0)), colW: p.cols.map(inch), rowH: p.rowH.map(inch), border: { type: "solid", color: "C4D5E0", pt: 0.75 }, autoPage: false });
+      slide.addTable(rows as never, { x: inch(p.x), y: inch(p.y), w: inch(p.cols.reduce((a, b) => a + b, 0)), h: inch(p.rowH.reduce((a, b) => a + b, 0)), colW: p.cols.map(inch), rowH: p.rowH.map(inch), border: { type: "solid", color: "D5E1EA", pt: 0.75 }, autoPage: false });
       return;
     }
   }

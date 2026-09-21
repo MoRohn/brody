@@ -11,7 +11,7 @@ export class Canvas {
   rect(x: number, y: number, w: number, h: number, o: { fill?: string; stroke?: string; sw?: number; r?: number; opacity?: number } = {}): void {
     this.prims.push({ t: "rect", x, y, w, h, ...o });
   }
-  ellipse(x: number, y: number, w: number, h: number, o: { fill?: string; stroke?: string; sw?: number } = {}): void {
+  ellipse(x: number, y: number, w: number, h: number, o: { fill?: string; stroke?: string; sw?: number; opacity?: number } = {}): void {
     this.prims.push({ t: "ellipse", x, y, w, h, ...o });
   }
   poly(pts: [number, number][], o: { fill?: string; stroke?: string; sw?: number; opacity?: number; open?: boolean } = {}): void {
@@ -47,9 +47,45 @@ export class Canvas {
     return this.text(str, x, y, w, h, { ...o, size, lh: o.lh ? Math.round((o.lh * size) / o.size) : undefined });
   }
 
-  card(x: number, y: number, w: number, h: number, o: { accent?: string; fill?: string; stroke?: string; r?: number } = {}): void {
-    this.rect(x, y, w, h, { fill: o.fill ?? C.card, stroke: o.stroke ?? C.line, sw: 1.2, r: o.r ?? 10 });
-    if (o.accent) this.rect(x, y + 10, 5, h - 20, { fill: o.accent, r: 2.5 });
+  /**
+   * A soft card: a tinted surface with no outline, a faint layered shadow, and (optionally) a coloured line along its top edge.
+   * The shadow is a few translucent shapes, so it looks the same in the browser, in PDF and in PowerPoint.
+   */
+  card(x: number, y: number, w: number, h: number, o: { accent?: string; fill?: string; stroke?: string; r?: number; shadow?: boolean } = {}): void {
+    const r = o.r ?? 16;
+    if (o.shadow) for (const [dy, op] of [[6, 0.03], [4, 0.035], [2, 0.045]] as const) this.rect(x + 1, y + dy, w - 2, h, { fill: C.text, r, opacity: op });
+    this.rect(x, y, w, h, { fill: o.fill ?? C.mist, stroke: o.stroke, sw: o.stroke ? 1.2 : undefined, r });
+    if (o.accent) this.rect(x + r, y, w - r * 2, 5, { fill: o.accent, r: 2.5 });
+  }
+
+  /** A disc that may overhang the page: drawn as a polygon clipped to the canvas, so nothing sits off the slide in PowerPoint. */
+  disc(cx: number, cy: number, r: number, o: { fill: string; opacity?: number }, box = { w: 1280, h: 720 }): void {
+    const pts: [number, number][] = [];
+    for (let i = 0; i < 120; i++) { const a = (i / 120) * 2 * Math.PI; pts.push([Math.min(box.w, Math.max(0, cx + r * Math.cos(a))), Math.min(box.h, Math.max(0, cy + r * Math.sin(a)))]); }
+    this.poly(pts, o);
+  }
+
+  /** A vertical or diagonal colour ramp made of thin strips (gradients are not portable across formats; strips are). */
+  gradient(x: number, y: number, w: number, h: number, from: string, to: string, steps = 32): void {
+    const a = parseInt(from.slice(1), 16), b = parseInt(to.slice(1), 16);
+    const ch = (c: number, s: number) => (c >> s) & 255;
+    for (let i = 0; i < steps; i++) {
+      const t = i / (steps - 1);
+      const mix = (s: number) => Math.round(ch(a, s) + (ch(b, s) - ch(a, s)) * t);
+      const hex = `#${[16, 8, 0].map((s) => mix(s).toString(16).padStart(2, "0")).join("")}`;
+      const y0 = y + (h * i) / steps;
+      this.rect(x, y0, w, Math.min(h / steps + 4, y + h - y0), { fill: hex });
+    }
+  }
+
+  /** A status lozenge: a coloured dot and a word (never colour alone). */
+  status(label: string, x: number, y: number, color: string, o: { size?: number; h?: number } = {}): number {
+    const size = o.size ?? 14, h = o.h ?? Math.round(size * 2);
+    const w = Math.ceil(textWidth(label, size, "sans", true)) + h + 14;
+    this.rect(x, y, w, h, { fill: color, r: h / 2, opacity: 0.14 });
+    this.ellipse(x + h * 0.36, y + h * 0.32, h * 0.36, h * 0.36, { fill: color });
+    this.text(label, x + h * 0.9, y, w - h, h, { size, color, bold: true, valign: "m", maxLines: 1 });
+    return w;
   }
 
   /** A filled label; returns its width so callers can lay pills out in a row. */
@@ -109,19 +145,37 @@ export class Canvas {
   }
 
   /** A small pictogram for a kind of capability, drawn in white on a coloured disc. */
-  icon(kind: string, cx: number, cy: number, r: number, color: string): void {
-    this.ellipse(cx - r, cy - r, r * 2, r * 2, { fill: color });
-    const w = C.white, s = r * 0.5;
+  icon(kind: string, cx: number, cy: number, r: number, color: string, o: { plain?: boolean } = {}): void {
+    if (!o.plain) this.ellipse(cx - r, cy - r, r * 2, r * 2, { fill: color });
+    const w = o.plain ? color : C.white, s = r * 0.5, sw = Math.max(1.6, r * 0.09);
+    const L = (x1: number, y1: number, x2: number, y2: number) => this.line(cx + x1 * s, cy + y1 * s, cx + x2 * s, cy + y2 * s, { color: w, sw });
+    const P = (pts: [number, number][], open = false, fill = false) => this.poly(pts.map(([x, y]) => [cx + x * s, cy + y * s] as [number, number]), fill ? { fill: w } : { stroke: w, sw, open });
+    const E = (x: number, y: number, dw: number, dh: number, fill = false) => this.ellipse(cx + (x - dw / 2) * s, cy + (y - dh / 2) * s, dw * s, dh * s, fill ? { fill: w } : { stroke: w, sw });
     switch (kind) {
-      case "ui": this.rect(cx - s * 1.05, cy - s * 0.8, s * 2.1, s * 1.6, { stroke: w, sw: 2, r: 3 }); this.line(cx - s * 1.05, cy - s * 0.3, cx + s * 1.05, cy - s * 0.3, { color: w, sw: 2 }); break;
-      case "api": this.poly([[cx - s * 1.1, cy - s * 0.8], [cx - s * 0.1, cy], [cx - s * 1.1, cy + s * 0.8]], { stroke: w, sw: 2.4, open: true }); this.poly([[cx + s * 0.1, cy - s * 0.8], [cx + s * 1.1, cy], [cx + s * 0.1, cy + s * 0.8]], { stroke: w, sw: 2.4, open: true }); break;
-      case "service": this.poly([[cx, cy - s * 1.1], [cx + s * 1.1, cy], [cx, cy + s * 1.1], [cx - s * 1.1, cy]], { stroke: w, sw: 2 }); this.ellipse(cx - s * 0.32, cy - s * 0.32, s * 0.64, s * 0.64, { fill: w }); break;
-      case "data": for (const dy of [-0.65, 0, 0.65]) this.ellipse(cx - s, cy + dy * s - s * 0.28, s * 2, s * 0.56, { stroke: w, sw: 1.8 }); break;
-      case "job": this.ellipse(cx - s, cy - s, s * 2, s * 2, { stroke: w, sw: 2 }); this.line(cx, cy, cx, cy - s * 0.65, { color: w, sw: 2 }); this.line(cx, cy, cx + s * 0.5, cy + s * 0.25, { color: w, sw: 2 }); break;
-      case "infra": this.poly([[cx - s * 0.55, cy - s], [cx + s * 0.55, cy - s], [cx + s * 1.1, cy], [cx + s * 0.55, cy + s], [cx - s * 0.55, cy + s], [cx - s * 1.1, cy]], { stroke: w, sw: 2 }); break;
+      case "ui": this.rect(cx - s * 1.05, cy - s * 0.8, s * 2.1, s * 1.6, { stroke: w, sw, r: 3 }); L(-1.05, -0.3, 1.05, -0.3); break;
+      case "api": P([[-1.1, -0.8], [-0.1, 0], [-1.1, 0.8]], true); P([[0.1, -0.8], [1.1, 0], [0.1, 0.8]], true); break;
+      case "service": P([[0, -1.1], [1.1, 0], [0, 1.1], [-1.1, 0]]); E(0, 0, 0.64, 0.64, true); break;
+      case "data": for (const dy of [-0.65, 0, 0.65]) E(0, dy, 2, 0.56); break;
+      case "job": E(0, 0, 2, 2); L(0, 0, 0, -0.65); L(0, 0, 0.5, 0.25); break;
+      case "infra": P([[-0.55, -1], [0.55, -1], [1.1, 0], [0.55, 1], [-0.55, 1], [-1.1, 0]]); break;
       case "util": for (const [dx, dy] of [[-0.55, -0.55], [0.15, -0.55], [-0.55, 0.15], [0.15, 0.15]]) this.rect(cx + dx * s, cy + dy * s, s * 0.7, s * 0.7, { fill: w, r: 1.5 }); break;
-      case "external": this.poly([[cx, cy - s * 1.1], [cx + s * 0.3, cy - s * 0.3], [cx + s * 1.1, cy - s * 0.25], [cx + s * 0.45, cy + s * 0.25], [cx + s * 0.7, cy + s * 1.05], [cx, cy + s * 0.55], [cx - s * 0.7, cy + s * 1.05], [cx - s * 0.45, cy + s * 0.25], [cx - s * 1.1, cy - s * 0.25], [cx - s * 0.3, cy - s * 0.3]], { fill: w }); break;
-      default: this.ellipse(cx - s * 0.55, cy - s * 0.55, s * 1.1, s * 1.1, { fill: w });
+      case "external": case "globe": E(0, 0, 2.1, 2.1); E(0, 0, 0.9, 2.1); L(-1.05, 0, 1.05, 0); break;
+      case "shield": P([[0, -1.15], [1, -0.7], [1, 0.1], [0, 1.15], [-1, 0.1], [-1, -0.7]]); P([[-0.4, 0], [-0.1, 0.35], [0.5, -0.4]], true); break;
+      case "pulse": P([[-1.2, 0.1], [-0.5, 0.1], [-0.2, -0.9], [0.25, 0.9], [0.55, 0.1], [1.2, 0.1]], true); break;
+      case "check": E(0, 0, 2.1, 2.1); P([[-0.5, 0.05], [-0.1, 0.45], [0.6, -0.4]], true); break;
+      case "sliders": for (const [y, x] of [[-0.7, -0.4], [0, 0.5], [0.7, -0.1]] as const) { L(-1, y, 1, y); E(x, y, 0.5, 0.5, true); } break;
+      case "gear": E(0, 0, 1.4, 1.4); for (let i = 0; i < 8; i++) { const a = (i * Math.PI) / 4; L(Math.cos(a) * 0.85, Math.sin(a) * 0.85, Math.cos(a) * 1.15, Math.sin(a) * 1.15); } break;
+      case "box": P([[0, -1.1], [1, -0.55], [1, 0.6], [0, 1.15], [-1, 0.6], [-1, -0.55]]); L(0, 0.05, 0, 1.15); L(0, 0.05, 1, -0.55); L(0, 0.05, -1, -0.55); break;
+      case "files": this.rect(cx - s * 0.95, cy - s * 0.7, s * 1.4, s * 1.7, { stroke: w, sw, r: 2 }); this.rect(cx - s * 0.45, cy - s * 1.0, s * 1.4, s * 1.7, { stroke: w, sw, r: 2 }); break;
+      case "code": P([[-0.4, -0.8], [-1.1, 0], [-0.4, 0.8]], true); P([[0.4, -0.8], [1.1, 0], [0.4, 0.8]], true); L(0.15, -0.9, -0.15, 0.9); break;
+      case "layers": for (const dy of [-0.55, 0, 0.55]) P([[0, dy - 0.45], [1.1, dy], [0, dy + 0.45], [-1.1, dy]]); break;
+      case "alert": P([[0, -1.05], [1.15, 0.95], [-1.15, 0.95]]); L(0, -0.25, 0, 0.35); E(0, 0.65, 0.16, 0.16, true); break;
+      case "target": E(0, 0, 2.1, 2.1); E(0, 0, 1.2, 1.2); E(0, 0, 0.34, 0.34, true); break;
+      case "list": for (const y of [-0.7, 0, 0.7]) { E(-0.85, y, 0.22, 0.22, true); L(-0.4, y, 1.1, y); } break;
+      case "users": E(0, -0.45, 0.8, 0.8); P([[-1, 1], [-0.85, 0.3], [0, 0.1], [0.85, 0.3], [1, 1]], true); break;
+      case "lock": this.rect(cx - s * 0.85, cy - s * 0.15, s * 1.7, s * 1.1, { stroke: w, sw, r: 2 }); P([[-0.5, -0.15], [-0.5, -0.7], [0, -1], [0.5, -0.7], [0.5, -0.15]], true); break;
+      case "star": P([[0, -1.1], [0.3, -0.3], [1.1, -0.25], [0.45, 0.25], [0.7, 1.05], [0, 0.55], [-0.7, 1.05], [-0.45, 0.25], [-1.1, -0.25], [-0.3, -0.3]], false, true); break;
+      default: E(0, 0, 1.1, 1.1, true);
     }
   }
 
@@ -140,7 +194,7 @@ export class Canvas {
         const bold = c.bold ?? isHead;
         const lines = wrap(c.text, cols[ci] - padX * 2, { size: s, bold, maxLines: c.maxLines ?? 4 });
         h = Math.max(h, Math.round(lines.length * s * 1.3) + padY * 2);
-        return { lines, size: s, color: c.color ?? (isHead ? C.white : C.text), bold, align: c.align ?? "l", fill: c.fill ?? (isHead ? C.navy : ri % 2 === 0 ? C.card : "#F7FAFC"), pill: c.pill } satisfies TableCell;
+        return { lines, size: s, color: c.color ?? (isHead ? C.navy : C.text), bold, align: c.align ?? "l", fill: c.fill ?? (isHead ? C.mist2 : C.white), pill: c.pill } satisfies TableCell;
       });
       if (o.maxH !== undefined && total + h > o.maxH && cells.length > 0) return;
       cells.push(out);
@@ -171,7 +225,7 @@ export function tablePrims(p: Extract<Prim, { t: "table" }>): Prim[] {
     let x = p.x;
     row.forEach((cell, ci) => {
       const w = p.cols[ci], h = p.rowH[ri];
-      out.push({ t: "rect", x, y, w, h, fill: cell.fill, stroke: C.line, sw: 1 });
+      out.push({ t: "rect", x, y, w, h, fill: cell.fill, stroke: C.rule, sw: 1 });
       const total = cell.lines.length * Math.round(cell.size * 1.3);
       if (cell.pill) {
         const pw = Math.min(w - 12, Math.ceil(textWidth(cell.lines[0] ?? "", cell.size, "sans", true)) + 22), ph = Math.round(cell.size * 1.9);

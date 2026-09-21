@@ -8,12 +8,15 @@ import type { Category } from "../review/types";
  * an entry and that no technical token reaches a slide).
  */
 
+/** "Next.js", "Node.js", "Vue.js": product names that only look like file names. A real file name has a path or starts in lower case. */
+const isProductName = (m: string): boolean => !m.includes("/") && (/^[A-Z]/.test(m) || /^(next|node|vue|nuxt|express|nest|ember|backbone|three|chart|p5|d3)\.js$/i.test(m));
+
 /** Strip file paths, code and identifiers so a sentence reads as prose. */
 export function plainText(t: string | null | undefined): string {
   return (t ?? "")
     .replace(/\b[A-Z]{2,4}-\d{3}:?\s*/g, "")
     .replace(/`[^`]*`/g, "")
-    .replace(/\b[\w./-]+\.(?:ts|tsx|js|jsx|mjs|py|go|java|rb|rs|sql|json|ya?ml|md|env)(?::\d+(?:-\d+)?)?\b/g, "the code")
+    .replace(/\b[\w./-]+\.(?:ts|tsx|js|jsx|mjs|py|go|java|rb|rs|sql|json|ya?ml|md|env)(?::\d+(?:-\d+)?)?\b/g, (m) => (isProductName(m) ? m : "the code"))
     .replace(/\b(?:src|app|lib|tests?|scripts|worker|packages)\/[\w./-]+/g, "the code")
     .replace(/\b[\w$]+\([^)]*\)/g, "")
     .replace(/\s*\((?:Stated|stated)[^)]*\)\.?/g, "")
@@ -146,6 +149,8 @@ const EXPOSURE: Record<string, string> = {
   "Inefficient data retrieval": "Higher running costs and slower responses as data grows.",
   "Rounding errors in money calculations": "Amounts charged or reported can be slightly wrong.",
   "Debug mode left on": "Internal details may be exposed to outsiders.",
+  "A likely defect in the code": "Some behaviour may not work as intended, and problems may only show up in use.",
+  "Code that cannot be built or run": "The affected part of the system cannot be built or run until it is repaired.",
 };
 const EXPOSURE_BY_CATEGORY: Record<string, string> = {
   Testing: "Changes are more likely to break things without anyone noticing.",
@@ -158,10 +163,10 @@ const EXPOSURE_BY_CATEGORY: Record<string, string> = {
 
 export const THEME: Record<string, string> = {
   Security: "Security and data protection",
-  Reliability: "Reliability and resilience",
+  Reliability: "Reliability",
   Correctness: "Correctness",
   Performance: "Performance",
-  Maintainability: "Maintainability and technical debt",
+  Maintainability: "Maintainability",
   "API Design": "Ease of integration",
   Data: "Data integrity",
   Testing: "Quality assurance",
@@ -192,7 +197,7 @@ const ROLE_TEXT: Record<string, string> = {
 export const roleText = (role: string): string => ROLE_TEXT[role] ?? "Supporting capability";
 
 /** Words that mark a description as written for engineers; such text is replaced by the plainer role wording. */
-const ENGINEER_WORDS = /\b(http|rpc|endpoints?|schemas?|migrations?|middleware|orm|sql|api|handlers?|controllers?|repositor(?:y|ies)|modules?|config(?:uration)?|quer(?:y|ies)|ci|cd|dockerfile|orchestration|pipelines?|helpers?|hooks?|components?|client-side|state)\b|code under|supports the|top-level/i;
+const ENGINEER_WORDS = /\b(http|rpc|endpoints?|schemas?|migrations?|middleware|orm|sql|api|handlers?|controllers?|repositor(?:y|ies)|modules?|config(?:uration)?|quer(?:y|ies)|ci|cd|dockerfile|orchestration|pipelines?|hooks?|components?|client-side|state)\b|code under|supports the|top-level/i;
 export const isExecutiveWording = (t: string): boolean => t.length > 0 && !ENGINEER_WORDS.test(t) && !TECHNICAL_TOKENS.some((re) => re.test(t));
 
 const cap = (t: string) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);

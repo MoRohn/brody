@@ -9,7 +9,7 @@ export type FontKind = "sans" | "serif";
 
 export type Prim =
   | { t: "rect"; x: number; y: number; w: number; h: number; fill?: string; stroke?: string; sw?: number; r?: number; opacity?: number }
-  | { t: "ellipse"; x: number; y: number; w: number; h: number; fill?: string; stroke?: string; sw?: number }
+  | { t: "ellipse"; x: number; y: number; w: number; h: number; fill?: string; stroke?: string; sw?: number; opacity?: number }
   | { t: "poly"; pts: [number, number][]; fill?: string; stroke?: string; sw?: number; opacity?: number; open?: boolean }
   | { t: "line"; x1: number; y1: number; x2: number; y2: number; color: string; sw: number; dash?: boolean }
   | { t: "text"; x: number; y: number; w: number; h: number; lines: string[]; size: number; lh: number; color: string; bold?: boolean; italic?: boolean; font: FontKind; align: "l" | "c" | "r"; valign: "t" | "m" | "b"; spacing?: number }

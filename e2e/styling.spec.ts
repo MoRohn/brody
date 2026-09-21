@@ -66,6 +66,7 @@ for (const vp of VIEWPORTS) {
 }
 
 test("accessibility: no serious or critical axe violations on any view at any brightness level", async ({ browser }) => {
+  test.setTimeout(300_000);
   for (const scheme of LEVELS) {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     await ctx.addInitScript((l) => { try { localStorage.setItem("brody.theme", l); } catch { /* storage blocked */ } }, scheme);

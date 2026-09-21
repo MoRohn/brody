@@ -28,6 +28,15 @@ export function deckSlides(projectId: string): DeckSlides {
   return layoutDeck(ensureDeckContent(projectId));
 }
 
+export interface DeckOutline { title: string; generatedAt: number; origin: string; slides: { n: number; id: string; title: string; kicker: string; ref?: string }[] }
+
+/** The slide list (titles and the report section each points to), for the app page. */
+export function deckOutline(projectId: string): DeckOutline {
+  const content = ensureDeckContent(projectId);
+  const d = layoutDeck(content);
+  return { title: d.title, generatedAt: d.generatedAt, origin: content.origin, slides: d.slides.map((s, i) => ({ n: i + 1, id: s.id, title: s.title, kicker: s.kicker, ref: s.ref })) };
+}
+
 /** One deck file. Content comes from the snapshot the analysis stored, so the deck matches the report it was built with. */
 export async function exportDeck(projectId: string, format: DeckFormat): Promise<DeckFile> {
   const content: DeckContent = ensureDeckContent(projectId);

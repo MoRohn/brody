@@ -23,7 +23,7 @@ export default function ReportsPage() {
       <p className="mt-1 max-w-[70ch] text-muted">Every result can be viewed in the browser or downloaded as PDF, Word or Markdown. Reports are generated on demand from the latest analysis, so they always match what you see in the app and include the same evidence as file and line references.</p>
       <section className="card mt-4 p-4" aria-labelledby="r-deck">
         <h2 id="r-deck" className="text-[15px] font-semibold">Executive Summary Deck</h2>
-        <p className="mb-2 text-[13px] text-muted">A 13-slide leadership briefing built from this same analysis, in business language, with charts, tables and a diagram of the system. Every slide names the report section behind it.</p>
+        <p className="mb-2 text-[13px] text-muted">A 14-slide leadership briefing built from this same analysis, in business language, with charts, tables and a diagram of the system. Every slide names the report section behind it.</p>
         <div className="grid gap-x-6 divide-y divide-line md:grid-cols-3 md:divide-y-0">
           {(["pptx", "pdf", "html"] as const).map((f) => <DeckFormatRow key={f} projectId={id} format={f} />)}
         </div>

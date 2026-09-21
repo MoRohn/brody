@@ -24,18 +24,18 @@ test("the executive deck: a pipeline step, a page with a live preview, and three
   const stages = (await res.json()).project.job.stages as { key: string; status: string; detail?: string }[];
   const deck = stages.find((s) => s.key === "deck")!;
   expect(deck.status).toBe("done");
-  expect(deck.detail).toMatch(/13 slides/);
+  expect(deck.detail).toMatch(/14 slides/);
 
   // The Executive Deck page previews the real deck and offers three downloads.
   await page.getByRole("link", { name: "Executive Deck" }).click();
   await expect(page.getByRole("heading", { name: "Executive summary deck" })).toBeVisible();
   const frame = page.frameLocator('iframe[title="Executive summary deck preview"]');
   await expect(frame.locator(".slide.on svg text").first()).toBeVisible({ timeout: 20_000 });
-  await expect(frame.locator("#count")).toHaveText("1 / 13");
+  await expect(frame.locator("#count")).toHaveText("1 / 14");
   await frame.locator(".slide.on svg").click(); // focus the preview so it receives the keys
   await page.keyboard.press("ArrowRight");
-  await expect(frame.locator("#count")).toHaveText("2 / 13");
-  await expect(frame.locator(".slide.on")).toContainText("The system in brief");
+  await expect(frame.locator("#count")).toHaveText("2 / 14");
+  await expect(frame.locator(".slide.on")).toContainText(/the bottom line/i);
   await page.keyboard.press("o");
   await expect(frame.locator(".slide").first()).toBeVisible();
   if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await page.screenshot({ path: path.join(SHOTS, "deck-page.png") }); }
@@ -49,7 +49,7 @@ test("the executive deck: a pipeline step, a page with a live preview, and three
   };
   const pptx = await download("pptx", "dl-deck-pptx");
   const parts = Object.keys(unzipSync(new Uint8Array(pptx)));
-  expect(parts.filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))).toHaveLength(13);
+  expect(parts.filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))).toHaveLength(14);
   const pdf = await download("pdf", "dl-deck-pdf");
   expect(pdf.subarray(0, 4).toString()).toBe("%PDF");
   const html = await download("html", "dl-deck-html");
@@ -60,9 +60,9 @@ test("the executive deck: a pipeline step, a page with a live preview, and three
   const plain = await bare.newPage();
   await plain.setViewportSize({ width: 1280, height: 800 });
   await plain.goto(new URL(`/api/projects/${id}/deck?format=html&download=0`, page.url()).toString());
-  await expect(plain.locator(".slide svg")).toHaveCount(13);
+  await expect(plain.locator(".slide svg")).toHaveCount(14);
   await expect(plain.locator(".slide").first()).toBeVisible();
-  await expect(plain.locator(".slide").nth(12)).toBeVisible();
+  await expect(plain.locator(".slide").nth(13)).toBeVisible();
   await bare.close();
 
   // The Reports page offers the same three, and the report itself has not changed.
