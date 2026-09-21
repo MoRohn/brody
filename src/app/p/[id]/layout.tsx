@@ -18,6 +18,7 @@ const NAV: { slug: string; label: string; icon: IconName }[] = [
   { slug: "map", label: "Code Map", icon: "map" },
   { slug: "files", label: "Files", icon: "files" },
   { slug: "ask", label: "Ask Repository", icon: "ask" },
+  { slug: "deck", label: "Executive Deck", icon: "deck" },
   { slug: "reports", label: "Reports", icon: "reports" },
 ];
 

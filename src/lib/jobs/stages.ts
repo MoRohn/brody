@@ -12,6 +12,7 @@ export const STAGE_DEFS: { key: string; label: string }[] = [
   { key: "verify", label: "Verifying findings" },
   { key: "docs", label: "Generating documentation" },
   { key: "map", label: "Building code map" },
+  { key: "deck", label: "Building executive deck" },
   { key: "finalize", label: "Finalizing report" },
 ];
 

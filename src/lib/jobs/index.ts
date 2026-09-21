@@ -12,6 +12,7 @@ import { normalizeFiles } from "../ingest/normalize";
 import { attachFiles } from "../ingest/store";
 import { architectureDiagramText, architectureMermaid, erMermaid, legendText, repositoryTree, treeToText, loadModel } from "../map";
 import { buildSearchIndex } from "../retrieval";
+import { buildDeckContent, layoutDeck, saveDeckContent } from "../deck";
 import { runReview } from "../review";
 import { AppError } from "../util/errors";
 import { newId } from "../util/ids";
@@ -230,7 +231,19 @@ export async function processJob(jobId: string): Promise<void> {
     db.update(schema.projects).set({ analysis: { ...(cur.analysis ?? {}), map: mapArtifacts }, updatedAt: Date.now() }).where(eq(schema.projects.id, projectId)).run();
     t.done("map", "Tree, architecture map, dependency graphs and legend ready");
 
-    // 12. Finalize ------------------------------------------------------
+    // 12. Executive deck ---------------------------------------------------
+    // A business-level view of the same analysis the report holds. It is a convenience: if it cannot be built, the analysis and
+    // the report are still complete, and the deck is built on first request instead.
+    currentStage = "deck"; t.start("deck");
+    try {
+      const deck = buildDeckContent(projectId);
+      saveDeckContent(projectId, deck);
+      t.done("deck", `${layoutDeck(deck).slides.length} slides from the report's own findings; available as HTML, PowerPoint and PDF`);
+    } catch (e) {
+      t.warn("deck", `The executive deck could not be prepared (${scrubToken(e instanceof Error ? e.message : String(e)).slice(0, 160)}). It will be built when first requested.`);
+    }
+
+    // 13. Finalize ------------------------------------------------------
     currentStage = "finalize"; t.start("finalize");
     const fin = db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get()!;
     const summary = { usage: meter.usage, aiFailures: meter.failures, analyzers: review.analyzers, ai: review.ai, build: { ...buildSummary, errors: build.errors.slice(0, 20) }, model: provider ? { provider: provider.name, model: provider.model } : null };

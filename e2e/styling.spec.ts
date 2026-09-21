@@ -10,7 +10,7 @@ const VIEWPORTS = [{ name: "desktop", width: 1440, height: 900 }, { name: "lapto
 const LEVELS = ["bright", "original", "default", "dark", "darkest"] as const;
 /** Layout does not depend on colour, so two contrasting levels cover it; contrast is checked on all five below. */
 const LAYOUT_LEVELS = ["default", "darkest"] as const;
-const TABS = ["", "review", "explain", "explain?scale=collections&item=mod%3Asrc%2Fservices", "explain?scale=files", "architecture", "map", "files?path=src%2Fservices%2ForderService.ts", "ask", "reports"];
+const TABS = ["", "review", "explain", "explain?scale=collections&item=mod%3Asrc%2Fservices", "explain?scale=files", "architecture", "map", "files?path=src%2Fservices%2ForderService.ts", "ask", "deck", "reports"];
 
 let base = "";
 

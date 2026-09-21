@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 /** In-progress feedback: nothing that takes time may look idle or frozen. */
-const LABELS = ["Importing repository", "Enumerating files", "Parsing source", "Building symbol and dependency graph", "Indexing for retrieval", "Detecting architecture", "Running static analysis", "Reviewing code", "Verifying findings", "Generating documentation", "Building code map", "Finalizing report"];
+const LABELS = ["Importing repository", "Enumerating files", "Parsing source", "Building symbol and dependency graph", "Indexing for retrieval", "Detecting architecture", "Running static analysis", "Reviewing code", "Verifying findings", "Generating documentation", "Building code map", "Building executive deck", "Finalizing report"];
 
 async function fakeRunningProject(page: Page, runningIndex = 7) {
   const started = Date.now() - 65_000;
@@ -37,15 +37,15 @@ test("a running analysis shows a spinner, a moving bar, the current step and liv
   await expect(row).toHaveAttribute("aria-current", "step");
   await expect(row.locator(".spinner")).toBeVisible();
 
-  // The bar has a moving highlight and is never empty: 7 done + half of the running step out of 12.
+  // The bar has a moving highlight and is never empty: 7 done + half of the running step out of 13.
   const bar = page.getByRole("progressbar", { name: "Analysis progress" });
   await expect(bar).toHaveClass(/running/);
   const width = await bar.locator(".bar").evaluate((el) => (el as HTMLElement).style.width);
-  expect(parseFloat(width)).toBeCloseTo(((7 + 0.5) / 12) * 100, 0);
+  expect(parseFloat(width)).toBeCloseTo(((7 + 0.5) / 13) * 100, 0);
   expect(await bar.locator(".bar").evaluate((el) => getComputedStyle(el, "::after").animationName)).toBe("shimmer");
 
   // Plain-language status for screen readers and everyone else, and the tab title says work is happening.
-  await expect(page.getByRole("status").filter({ hasText: "Step 8 of 12: Reviewing code" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Step 8 of 13: Reviewing code" })).toBeVisible();
   await expect(page).toHaveTitle(/Analysing demo/);
 
   // Timers tick without any server update.

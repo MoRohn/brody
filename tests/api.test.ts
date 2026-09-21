@@ -43,7 +43,7 @@ describe("API: valid requests", () => {
     expect(list.json.projects[0]).toMatchObject({ id: pid, status: "ready", name: "sample-shop" });
     const one = await body(await getProject(req("/"), ctx(pid)));
     expect(one.json.project.job.status).toBe("succeeded");
-    expect(one.json.project.job.stages).toHaveLength(12);
+    expect(one.json.project.job.stages).toHaveLength(13); // includes "Building executive deck"
   });
 
   it("serves overview, findings (with filters and facets), report, architecture", async () => {

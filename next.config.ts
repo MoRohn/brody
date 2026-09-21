@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Native modules, WASM grammars and analyzers must be loaded from node_modules, not bundled.
   serverExternalPackages: [
-    "better-sqlite3", "web-tree-sitter", "pdfkit", "fontkit", "yauzl", "typescript", "eslint", "@typescript-eslint/parser",
+    "better-sqlite3", "web-tree-sitter", "pdfkit", "pptxgenjs", "fontkit", "yauzl", "typescript", "eslint", "@typescript-eslint/parser",
     "tree-sitter-python", "tree-sitter-go", "tree-sitter-java", "tree-sitter-c-sharp", "tree-sitter-typescript", "tree-sitter-javascript",
     "tree-sitter-css", "tree-sitter-html", "tree-sitter-json", "tree-sitter-bash", "tree-sitter-ruby", "tree-sitter-rust", "tree-sitter-php",
   ],
@@ -19,11 +19,15 @@ const nextConfig: NextConfig = {
     ...(process.env.NEXT_BUILD_CPUS ? { cpus: Number(process.env.NEXT_BUILD_CPUS) } : {}),
   },
   async headers() {
-    return [{ source: "/:path*", headers: [
-      { key: "X-Content-Type-Options", value: "nosniff" },
-      { key: "Referrer-Policy", value: "no-referrer" },
-      { key: "X-Frame-Options", value: "DENY" },
-    ] }];
+    return [
+      { source: "/:path*", headers: [
+        { key: "X-Content-Type-Options", value: "nosniff" },
+        { key: "Referrer-Policy", value: "no-referrer" },
+        { key: "X-Frame-Options", value: "DENY" },
+      ] },
+      // The Executive Deck page previews the deck in a frame of its own origin. Nothing else may be framed, and no other site may frame this.
+      { source: "/api/projects/:id/deck", headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }] },
+    ];
   },
 };
 
