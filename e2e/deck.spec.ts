@@ -7,7 +7,7 @@ import { unzipSync } from "fflate";
 
 const SHOTS = process.env.SCREENSHOT_DIR;
 
-test("the executive deck: a pipeline step, a page with a live preview, and three downloads", async ({ page }) => {
+test("the executive deck: a pipeline step, a page with a live preview, and three downloads", async ({ page, browser }) => {
   const zip = path.join(os.tmpdir(), `deck-shop-${Date.now()}.zip`);
   execFileSync("zip", ["-qr", zip, ".", "-x", "*.DS_Store"], { cwd: path.resolve("fixtures/sample-shop") });
   await page.goto("/");
@@ -54,6 +54,16 @@ test("the executive deck: a pipeline step, a page with a live preview, and three
   expect(pdf.subarray(0, 4).toString()).toBe("%PDF");
   const html = await download("html", "dl-deck-html");
   expect(html.toString()).toContain("Executive summary");
+
+  // With JavaScript off (or blocked) the deck must still be readable: every slide is shown, one under the other.
+  const bare = await browser.newContext({ javaScriptEnabled: false });
+  const plain = await bare.newPage();
+  await plain.setViewportSize({ width: 1280, height: 800 });
+  await plain.goto(new URL(`/api/projects/${id}/deck?format=html&download=0`, page.url()).toString());
+  await expect(plain.locator(".slide svg")).toHaveCount(13);
+  await expect(plain.locator(".slide").first()).toBeVisible();
+  await expect(plain.locator(".slide").nth(12)).toBeVisible();
+  await bare.close();
 
   // The Reports page offers the same three, and the report itself has not changed.
   await page.getByRole("link", { name: "Reports", exact: true }).click();

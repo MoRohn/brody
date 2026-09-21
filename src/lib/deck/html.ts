@@ -49,13 +49,15 @@ body{background:#0f202d;color:var(--text);font:15px/1.5 ${FONTS.sans.css}}
 .bar button{font:inherit;font-size:14px;color:#fff;background:#24566f;border:1px solid #3a7a99;border-radius:8px;padding:6px 12px;cursor:pointer}
 .bar button:hover,.bar button:focus-visible{background:var(--accent);outline:2px solid #9fd3e8;outline-offset:1px}
 main{padding-top:52px;min-height:100%}
-.slide{display:none;margin:0 auto;padding:18px 0 8px}
-.slide.on{display:block}
+.slide{display:block;margin:0 auto;padding:18px 0 8px}
+/* Without script every slide is simply shown, one under the other; script upgrades the page to a presenter. */
+.js .slide{display:none}
+.js .slide.on{display:block}
 .slide svg{display:block;margin:0 auto;width:min(96vw,calc((100vh - 170px) * 16 / 9));height:auto;background:#fff;border-radius:6px;box-shadow:0 10px 40px rgba(0,0,0,.45)}
 .notes{width:min(96vw,calc((100vh - 170px) * 16 / 9));margin:12px auto 0;color:#c7dbe8;font-size:14px}
 .notes p{margin:2px 0 0}
 .overview main{padding:70px 22px 30px}
-.overview .slide{display:inline-block;width:calc(33.3% - 12px);margin:6px;padding:0;vertical-align:top;cursor:pointer}
+html.js body.overview .slide,.overview .slide{display:inline-block;width:calc(33.3% - 12px);margin:6px;padding:0;vertical-align:top;cursor:pointer}
 .overview .slide svg{width:100%;box-shadow:0 4px 16px rgba(0,0,0,.4)}
 .overview .notes{display:none}
 .overview .slide.on svg{outline:4px solid var(--accent)}
@@ -77,6 +79,7 @@ ${body}
 </main>
 <script>
 (function(){
+  document.documentElement.classList.add('js');
   var slides=[].slice.call(document.querySelectorAll('.slide')),cur=0,root=document.body;
   function show(i){cur=Math.max(0,Math.min(slides.length-1,i));slides.forEach(function(s,k){s.classList.toggle('on',k===cur)});
     document.getElementById('count').textContent=(cur+1)+' / '+slides.length;if(!root.classList.contains('overview')){var h='#s'+(cur+1);if(location.hash!==h)history.replaceState(null,'',h)}}

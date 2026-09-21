@@ -91,7 +91,7 @@ function titleSlide(c: DeckContent): Slide {
 
 function summarySlide(c: DeckContent): Slide {
   const { cv, done } = frame("summary", "Executive summary", "The system in brief", refText(c, "exec"), `${c.headline} ${c.summary} Detail: ${refText(c, "exec")}.`);
-  cv.text(c.headline, X, 126, CW, 118, { size: 30, color: C.navy, bold: true, font: "serif", lh: 40, maxLines: 3 });
+  cv.fit(c.headline, X, 126, CW, 118, { size: 30, min: 22, color: C.navy, bold: true, font: "serif", lh: 40, maxLines: 4 });
   cv.text(c.summary, X, 252, CW, 112, { size: 18, color: C.text, lh: 27, maxLines: 4 });
   const next = c.actions.find((a) => a.priority === "Now") ?? c.actions[0];
   const pts = [...c.keyPoints.slice(0, 3), ...(next ? [{ title: "What to do first", detail: next.action }] : [])];

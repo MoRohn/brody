@@ -195,6 +195,7 @@ export const roleText = (role: string): string => ROLE_TEXT[role] ?? "Supporting
 const ENGINEER_WORDS = /\b(http|rpc|endpoints?|schemas?|migrations?|middleware|orm|sql|api|handlers?|controllers?|repositor(?:y|ies)|modules?|config(?:uration)?|quer(?:y|ies)|ci|cd|dockerfile|orchestration|pipelines?|helpers?|hooks?|components?|client-side|state)\b|code under|supports the|top-level/i;
 export const isExecutiveWording = (t: string): boolean => t.length > 0 && !ENGINEER_WORDS.test(t) && !TECHNICAL_TOKENS.some((re) => re.test(t));
 
+const cap = (t: string) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
 const SINGULAR = (w: string) => (w.endsWith("ies") ? `${w.slice(0, -3)}y` : w.endsWith("ses") ? w.slice(0, -2) : w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w);
 const SPECIAL: [RegExp, string][] = [
   [/login|signin|sign-in|authenticate/, "Sign in"], [/logout|signout|sign-out/, "Sign out"], [/register|signup|sign-up/, "Sign up"],
@@ -218,6 +219,8 @@ export function humanizeFlow(name: string, trigger: string, kind?: string): stri
   const endsWithParam = segs.length > 0 && /^[:{[]/.test(segs[segs.length - 1]);
   for (const [re, label] of SPECIAL) if (re.test(last)) return label;
   const noun = last.replace(/[-_]+/g, " ") || "record";
+  // A route that names an action ("/evaluate", "/analyze-excerpt") is already a verb phrase: "Evaluate", not "Create an evaluate".
+  if (method === "POST" && !endsWithParam && noun && !/s$/.test(noun) && !/^(order|user|project|item|comment|file|message|invoice|customer|account|report|document|task|product|cart|payment|review|session|token|note|post|event|job|team|group|role|setting|key)$/.test(noun)) return cap(noun);
   const one = SINGULAR(noun);
   const article = /^[aeiou]/.test(one) && !/^(us|uni|eu|one|ut)/.test(one) ? "an" : "a";
   if (method === "GET") return endsWithParam ? `View ${article} ${one}` : `List ${noun}`;

@@ -123,6 +123,9 @@ describe("executive deck: language", () => {
     expect(humanizeFlow("POST /api/login", "POST /api/login")).toBe("Sign in");
     expect(humanizeFlow("DELETE /api/users/:id", "DELETE /api/users/:id")).toBe("Remove a user");
     expect(humanizeFlow("main", "startup", "startup")).toBe("System start-up");
+    expect(humanizeFlow("POST /api/evaluate", "POST /api/evaluate")).toBe("Evaluate");
+    expect(humanizeFlow("POST /api/analyze-excerpt", "POST /api/analyze-excerpt")).toBe("Analyze excerpt");
+    expect(humanizeFlow("POST /api/citations", "POST /api/citations")).toBe("Create a citation");
   });
 });
 
@@ -174,6 +177,10 @@ describe("executive deck: the three formats", () => {
     expect(html).not.toMatch(/(?:src|href)="https?:/);
     expect(html).toContain("@media print");
     expect(html).not.toContain("<script src=");
+    // Without script the page still shows every slide (script only upgrades it to a presenter).
+    expect(html).toMatch(/\.slide\{display:block/);
+    expect(html).toMatch(/\.js \.slide\{display:none\}/);
+    expect(html).toContain("classList.add('js')");
   });
 
   it("PDF has one landscape 16:9 page per slide", async () => {

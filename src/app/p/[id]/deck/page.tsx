@@ -13,7 +13,7 @@ export default function DeckPage() {
         <h1 className="font-serif text-2xl font-bold">Executive summary deck</h1>
         <p className="mt-1 max-w-[70ch] text-muted">A 13-slide briefing for leaders, built from the same analysis as the report: what the system does, how it is built, where the risk is, and what to do next. Each slide names the report section that holds the detail.</p>
         <div className="card mt-3 overflow-hidden" style={{ background: "var(--panel2)" }}>
-          <iframe title="Executive summary deck preview" src={deckUrl(id, "html", true)} className="block h-[68vh] min-h-[420px] w-full border-0" data-testid="deck-preview" />
+          <iframe title="Executive summary deck preview" src={deckUrl(id, "html", true)} className="block h-[68vh] min-h-[420px] w-full border-0" data-testid="deck-preview" allow="fullscreen" />
         </div>
         <p className="mt-2 text-xs text-muted">Use the arrow keys to move between slides, O for the overview and F for full screen.</p>
       </div>
