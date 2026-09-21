@@ -4,6 +4,7 @@ import { getDb, schema } from "@/lib/db/client";
 import { importBundle, isBundleZip } from "@/lib/bundle";
 import { ingestUpload, type UploadedItem, type UploadMode } from "@/lib/ingest/upload";
 import { enqueueAnalysis } from "@/lib/jobs";
+import { readCappedForm } from "@/lib/util/body";
 import { AppError } from "@/lib/util/errors";
 import { eq } from "drizzle-orm";
 
@@ -14,14 +15,8 @@ const MODES = new Set(["file", "files", "folder", "zip"]);
 
 export async function POST(req: Request) {
   return guard(async () => {
-    const length = Number(req.headers.get("content-length") ?? 0);
-    if (length > config.limits.maxUploadBytes) throw new AppError("upload_too_large", `The upload is ${Math.round(length / 1024 / 1024)} MB; the limit is ${Math.round(config.limits.maxUploadBytes / 1024 / 1024)} MB.`, 413, "Exclude dependencies and build output, or upload a ZIP of just the source.");
-    let form: FormData;
-    try {
-      form = await req.formData();
-    } catch {
-      throw new AppError("invalid_upload", "The upload could not be read as a multipart form.", 400, "Try again, or upload the project as a ZIP archive.");
-    }
+    // The size is enforced on the bytes actually received, not on the Content-Length header a client states.
+    const form = await readCappedForm(req, config.limits.maxUploadBytes, "The upload");
     const mode = String(form.get("mode") ?? "files") as UploadMode;
     if (!MODES.has(mode)) throw new AppError("invalid_request", `Unknown upload mode "${mode}".`, 400);
     const items: UploadedItem[] = [];

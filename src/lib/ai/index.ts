@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { config } from "../config";
+import { withDeadline } from "./deadline";
+export { withDeadline } from "./deadline";
 import { AnthropicProvider } from "./anthropic";
 import { explainAIError } from "./errors";
 import { OpenAICompatibleProvider } from "./openai";
@@ -77,7 +79,7 @@ export class UsageMeter {
 export async function tryAnalyze<T>(provider: AIProvider | null, meter: UsageMeter, req: AnalysisRequest<T>): Promise<T | undefined> {
   if (!provider) return undefined;
   try {
-    const r: AnalysisResult<T> = await provider.analyze(req);
+    const r: AnalysisResult<T> = await withDeadline(provider.analyze(req), config.ai.callDeadlineMs, `The AI request "${req.task}"`);
     meter.add(r.usage);
     return r.data;
   } catch (e) {
@@ -109,8 +111,8 @@ export async function checkProvider(force = false): Promise<ProviderHealth> {
   if (!force && healthCache && healthCache.key === key && Date.now() - healthCache.at < 5 * 60_000) return healthCache.value;
   let value: ProviderHealth;
   try {
-    if (p?.ping) await p.ping();
-    else if (p) await p.analyze({ task: "ping", system: "Reply in JSON.", prompt: 'Return {"ok": true}.', schema: z.object({ ok: z.boolean() }), maxTokens: 50 });
+    if (p?.ping) await withDeadline(p.ping(), config.ai.healthTimeoutMs, "The AI credential check");
+    else if (p) await withDeadline(p.analyze({ task: "ping", system: "Reply in JSON.", prompt: 'Return {"ok": true}.', schema: z.object({ ok: z.boolean() }), maxTokens: 50 }), config.ai.healthTimeoutMs, "The AI credential check");
     value = { ...status, checked: true, ok: true };
   } catch (e) {
     value = { ...status, checked: true, ok: false, problem: explainAIError(e instanceof Error ? e.message : String(e)) };

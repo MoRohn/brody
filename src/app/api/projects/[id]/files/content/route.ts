@@ -1,6 +1,6 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import { getReadyProject, guard, json } from "@/lib/api";
-import { getDb, schema, projectRows } from "@/lib/db/client";
+import { getDb, schema } from "@/lib/db/client";
 import type { DocReport } from "@/lib/docs/types";
 import { getFileContent } from "@/lib/ingest/store";
 import { changeImpact } from "@/lib/map";
@@ -9,6 +9,8 @@ import { AppError } from "@/lib/util/errors";
 export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
 const MAX_RETURN = 600_000;
+/** SQLite limits how many values one IN list may hold; 400 keeps a query well inside it. */
+function* chunks<T>(xs: T[], size = 400): Generator<T[]> { for (let i = 0; i < xs.length; i += size) yield xs.slice(i, i + size); }
 
 export async function GET(req: Request, { params }: Ctx) {
   return guard(async () => {
@@ -26,9 +28,24 @@ export async function GET(req: Request, { params }: Ctx) {
     else { content = getFileContent(file.hash) ?? null; if (content && content.length > MAX_RETURN) { content = content.slice(0, MAX_RETURN); note = "File truncated for display."; } }
     const symbols = db.select().from(schema.symbols).where(and(eq(schema.symbols.projectId, id), eq(schema.symbols.fileId, file.id))).all().sort((a, b) => a.startLine - b.startLine);
     const symbolIds = new Set(symbols.map((s) => s.id));
-    const rels = projectRows(schema.relationships, id);
-    const filesById = new Map(projectRows(schema.files, id).map((f) => [f.id, f]));
-    const symbolsById = new Map(projectRows(schema.symbols, id).map((s) => [s.id, s]));
+    // Only what touches this file is read: its relationships (by the indexed source and target ids), then just the files and
+    // symbols at their other ends. Loading the project's whole tables for every file view does not scale with repository size.
+    const anchors = [file.id, ...symbolIds];
+    const relById = new Map<string, typeof schema.relationships.$inferSelect>();
+    for (const c of chunks(anchors)) {
+      for (const r of db.select().from(schema.relationships).where(and(eq(schema.relationships.projectId, id), or(inArray(schema.relationships.sourceId, c), inArray(schema.relationships.targetId, c)))).all()) relById.set(r.id, r);
+    }
+    const rels = [...relById.values()];
+    const otherFiles = new Set<string>(), otherSymbols = new Set<string>();
+    for (const r of rels) {
+      for (const [type, ref] of [[r.sourceType, r.sourceId], [r.targetType, r.targetId]] as const) {
+        if (type === "file") otherFiles.add(ref); else if (type === "symbol" && !symbolIds.has(ref)) otherSymbols.add(ref);
+      }
+    }
+    const filesById = new Map<string, typeof schema.files.$inferSelect>([[file.id, file]]);
+    for (const c of chunks([...otherFiles].filter((x) => x !== file.id))) for (const f of db.select().from(schema.files).where(and(eq(schema.files.projectId, id), inArray(schema.files.id, c))).all()) filesById.set(f.id, f);
+    const symbolsById = new Map<string, typeof schema.symbols.$inferSelect>(symbols.map((x) => [x.id, x]));
+    for (const c of chunks([...otherSymbols])) for (const x of db.select().from(schema.symbols).where(and(eq(schema.symbols.projectId, id), inArray(schema.symbols.id, c))).all()) symbolsById.set(x.id, x);
     const outgoing = new Set<string>(), incoming = new Set<string>(), tests = new Set<string>(), externals = new Set<string>();
     for (const r of rels) {
       const srcIn = r.sourceId === file.id || symbolIds.has(r.sourceId);

@@ -3,6 +3,7 @@ import { guard, json, projectSummary } from "@/lib/api";
 import { importBundle } from "@/lib/bundle";
 import { config } from "@/lib/config";
 import { getDb, schema } from "@/lib/db/client";
+import { readCappedForm } from "@/lib/util/body";
 import { AppError } from "@/lib/util/errors";
 
 export const dynamic = "force-dynamic";
@@ -14,10 +15,8 @@ export const maxDuration = 300;
  */
 export async function POST(req: Request) {
   return guard(async () => {
-    const length = Number(req.headers.get("content-length") ?? 0);
-    if (length > config.limits.maxUploadBytes) throw new AppError("upload_too_large", `The file is ${Math.round(length / 1024 / 1024)} MB; the limit is ${Math.round(config.limits.maxUploadBytes / 1024 / 1024)} MB.`, 413, "Raise MAX_UPLOAD_BYTES, or export a smaller project.");
-    let form: FormData;
-    try { form = await req.formData(); } catch { throw new AppError("invalid_upload", "The upload could not be read as a multipart form.", 400, "Send the .zip as the multipart field \"file\"."); }
+    // The size is enforced on the bytes actually received, not on the Content-Length header a client states.
+    const form = await readCappedForm(req, config.limits.maxUploadBytes, "The file");
     const file = form.get("file");
     if (!file || typeof file === "string") throw new AppError("invalid_request", "No file was sent.", 400, "Choose a Brody bundle .zip.");
     const { projectId, warnings } = await importBundle(Buffer.from(await (file as File).arrayBuffer()));

@@ -2,6 +2,7 @@ import { getReadyProject, guard } from "@/lib/api";
 import { buildBundle } from "@/lib/bundle";
 import { exportFile, FORMATS, isFormat, isScope, SCOPES } from "@/lib/export";
 import { AppError } from "@/lib/util/errors";
+import { htmlSecurityHeaders } from "@/lib/util/security";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -32,8 +33,10 @@ export async function GET(req: Request, { params }: Ctx) {
     const disposition = inline && viewable ? "inline" : "attachment";
     // Markdown is shown as plain text when viewed inline so browsers do not offer to download it.
     const contentType = inline && format === "md" ? "text/plain; charset=utf-8" : r.contentType;
+    // HTML is generated from analysed repositories: serve it sandboxed so a page opened in the browser cannot reach the app.
+    const isHtml = format === "html" || format === "print";
     return new Response(typeof r.body === "string" ? r.body : new Uint8Array(r.body), {
-      headers: { "Content-Type": contentType, "Cache-Control": "no-store", "Content-Disposition": `${disposition}; filename="${r.filename}"`, "X-Content-Type-Options": "nosniff" },
+      headers: { "Content-Type": contentType, "Cache-Control": "no-store", "Content-Disposition": `${disposition}; filename="${r.filename}"`, "X-Content-Type-Options": "nosniff", ...(isHtml ? htmlSecurityHeaders({ cdn: "https://cdn.jsdelivr.net" }) : {}) },
     });
   });
 }

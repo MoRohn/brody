@@ -42,16 +42,21 @@ export function latestJobForProject(projectId: string): JobRow | undefined {
   return getDb().select().from(schema.jobs).where(eq(schema.jobs.projectId, projectId)).orderBy(desc(schema.jobs.createdAt)).limit(1).get();
 }
 
+/**
+ * Cancel a job. Each step is a single conditional UPDATE, so it cannot overwrite a job that another process claimed between
+ * looking at it and changing it: a queued job is cancelled only if it is still queued; otherwise a running job is asked to
+ * stop (it notices between units of work). Reading the status first and writing afterwards would let a worker start the job
+ * in the gap and leave it running while marked cancelled.
+ */
 export function requestCancel(jobId: string): JobRow | undefined {
   const db = getDb();
   const job = getJob(jobId);
   if (!job) return undefined;
-  if (job.status === "queued") {
-    db.update(schema.jobs).set({ status: "cancelled", finishedAt: Date.now(), error: "Cancelled before it started." }).where(eq(schema.jobs.id, jobId)).run();
-    db.update(schema.projects).set({ status: "created", updatedAt: Date.now() }).where(eq(schema.projects.id, job.projectId)).run();
-  } else if (job.status === "running") {
-    db.update(schema.jobs).set({ cancelRequested: true }).where(eq(schema.jobs.id, jobId)).run();
-  }
+  db.transaction((tx) => {
+    const cancelled = tx.update(schema.jobs).set({ status: "cancelled", finishedAt: Date.now(), error: "Cancelled before it started." }).where(and(eq(schema.jobs.id, jobId), eq(schema.jobs.status, "queued"))).run().changes;
+    if (cancelled) tx.update(schema.projects).set({ status: "created", updatedAt: Date.now() }).where(eq(schema.projects.id, job.projectId)).run();
+    else tx.update(schema.jobs).set({ cancelRequested: true }).where(and(eq(schema.jobs.id, jobId), eq(schema.jobs.status, "running"))).run();
+  });
   return getJob(jobId);
 }
 
@@ -126,7 +131,9 @@ export async function processJob(jobId: string): Promise<void> {
   if (!job) return;
   const t = new Tracker(jobId, job);
   const projectId = job.projectId;
-  db.update(schema.jobs).set({ status: "running", startedAt: Date.now(), heartbeatAt: Date.now() }).where(eq(schema.jobs.id, jobId)).run();
+  // Start only a job that is still waiting or already claimed for this run; never bring a cancelled or finished one back to life.
+  const started = db.update(schema.jobs).set({ status: "running", startedAt: Date.now(), heartbeatAt: Date.now() }).where(and(eq(schema.jobs.id, jobId), inArray(schema.jobs.status, ["queued", "running"]))).run().changes;
+  if (!started) return;
   let currentStage: string | null = null;
   const beat = setInterval(() => t.heartbeat(), 15_000);
   const meter = new UsageMeter();

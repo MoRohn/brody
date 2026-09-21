@@ -1,10 +1,14 @@
-import { } from "drizzle-orm";
+import { and, asc, count, eq, inArray, ne, sql, type SQL } from "drizzle-orm";
 import { getReadyProject, guard, intParam, json } from "@/lib/api";
-import { schema, projectRows } from "@/lib/db/client";
+import { getDb, schema } from "@/lib/db/client";
 
 export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
 const SEV = ["Critical", "High", "Medium", "Low", "Informational"];
+const F = schema.findings;
+
+/** A user's search text as a literal for LIKE: % and _ carry no meaning of their own. */
+const likeLiteral = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
 export async function GET(req: Request, { params }: Ctx) {
   return guard(async () => {
@@ -15,13 +19,34 @@ export async function GET(req: Request, { params }: Ctx) {
     const list = (k: string) => (u.searchParams.get(k) ?? "").split(",").map((x) => x.trim()).filter(Boolean);
     const sev = list("severity"), cat = list("category"), origin = list("origin"), ver = list("verification"), area = list("area"), conf = list("confidence");
     const file = u.searchParams.get("file");
-    let rows = projectRows(schema.findings, id).filter((f) => f.verification !== "rejected");
-    const facets = (k: (f: (typeof rows)[number]) => string | null) => { const m: Record<string, number> = {}; for (const f of rows) { const v = k(f); if (v) m[v] = (m[v] ?? 0) + 1; } return m; };
-    const facetData = { severity: facets((f) => f.severity), category: facets((f) => f.category), origin: facets((f) => f.origin), verification: facets((f) => f.verification), area: facets((f) => f.area), confidence: facets((f) => f.confidence) };
-    rows = rows.filter((f) => (!sev.length || sev.includes(f.severity)) && (!cat.length || cat.includes(f.category)) && (!origin.length || origin.includes(f.origin)) && (!ver.length || ver.includes(f.verification)) && (!area.length || (f.area && area.includes(f.area))) && (!conf.length || conf.includes(f.confidence)) && (!file || f.filePath === file) && (!q || `${f.code} ${f.title} ${f.filePath ?? ""} ${f.whatHappens} ${f.category}`.toLowerCase().includes(q)));
-    rows.sort((a, b) => SEV.indexOf(a.severity) - SEV.indexOf(b.severity) || a.code.localeCompare(b.code));
+    const db = getDb();
+
+    // Facets count the whole project, unfiltered, as before; the database does the counting instead of the request loading every row.
+    const live = and(eq(F.projectId, id), ne(F.verification, "rejected"));
+    const facet = (col: typeof F.severity | typeof F.category | typeof F.origin | typeof F.verification | typeof F.area | typeof F.confidence) => {
+      const out: Record<string, number> = {};
+      for (const r of db.select({ v: col, n: count() }).from(F).where(live).groupBy(col).all()) if (r.v) out[r.v] = r.n;
+      return out;
+    };
+    const facetData = { severity: facet(F.severity), category: facet(F.category), origin: facet(F.origin), verification: facet(F.verification), area: facet(F.area), confidence: facet(F.confidence) };
+
+    const where: (SQL | undefined)[] = [live];
+    if (sev.length) where.push(inArray(F.severity, sev));
+    if (cat.length) where.push(inArray(F.category, cat));
+    if (origin.length) where.push(inArray(F.origin, origin));
+    if (ver.length) where.push(inArray(F.verification, ver));
+    if (area.length) where.push(inArray(F.area, area));
+    if (conf.length) where.push(inArray(F.confidence, conf));
+    if (file) where.push(eq(F.filePath, file));
+    // The search text is bound as a parameter, never spliced into the statement.
+    if (q) where.push(sql`lower(${F.code} || ' ' || ${F.title} || ' ' || coalesce(${F.filePath}, '') || ' ' || ${F.whatHappens} || ' ' || ${F.category}) like ${likeLiteral(q)} escape '\\'`);
+    const filtered = and(...where);
+
     const limit = intParam(u.searchParams.get("limit"), 200, 1, 1000);
     const offset = intParam(u.searchParams.get("offset"), 0, 0, 100000);
-    return json({ total: rows.length, facets: facetData, findings: rows.slice(offset, offset + limit).map(({ projectId: _p, ...f }) => f) });
+    const total = db.select({ n: count() }).from(F).where(filtered).get()?.n ?? 0;
+    const severityRank = sql`case ${F.severity} ${sql.join(SEV.map((s, i) => sql`when ${s} then ${i}`), sql` `)} else -1 end`;
+    const rows = db.select().from(F).where(filtered).orderBy(severityRank, asc(F.code)).limit(limit).offset(offset).all();
+    return json({ total, facets: facetData, findings: rows.map(({ projectId: _p, ...f }) => f) });
   });
 }

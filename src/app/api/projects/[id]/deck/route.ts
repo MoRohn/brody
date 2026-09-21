@@ -1,6 +1,7 @@
 import { getReadyProject, guard } from "@/lib/api";
 import { DECK_FORMATS, exportDeck, isDeckFormat } from "@/lib/deck";
 import { AppError } from "@/lib/util/errors";
+import { htmlSecurityHeaders } from "@/lib/util/security";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -20,7 +21,7 @@ export async function GET(req: Request, { params }: Ctx) {
     const inline = u.searchParams.get("download") === "0" && format !== "pptx";
     const f = await exportDeck(id, format);
     return new Response(typeof f.body === "string" ? f.body : new Uint8Array(f.body), {
-      headers: { "Content-Type": f.contentType, "Cache-Control": "no-store", "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${f.filename}"`, "X-Content-Type-Options": "nosniff" },
+      headers: { "Content-Type": f.contentType, "Cache-Control": "no-store", "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${f.filename}"`, "X-Content-Type-Options": "nosniff", ...(format === "html" ? htmlSecurityHeaders() : {}) },
     });
   });
 }

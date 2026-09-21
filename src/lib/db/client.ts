@@ -92,6 +92,24 @@ function prepared<T>(key: string, make: () => T): T {
   return v;
 }
 
+const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+/**
+ * A table or column name as a quoted SQL identifier. Names come from the Drizzle schema, never from a request, and values are
+ * always bound as `?` parameters. The name is still validated here, so a future misuse cannot put arbitrary text into a statement.
+ */
+export function ident(name: string): string {
+  if (!IDENTIFIER.test(name)) throw new Error(`Refusing to use ${JSON.stringify(name)} as a SQL identifier.`);
+  return `"${name}"`;
+}
+const placeholders = (n: number) => Array.from({ length: n }, () => "?").join(", ");
+
+/** The statements the bulk helpers run, built from validated identifiers only. Exported so they can be tested directly. */
+export const sqlText = {
+  insert: (table: string, columns: string[], ignoreConflicts: boolean): string => ["INSERT", ignoreConflicts ? "OR IGNORE" : "", "INTO", ident(table), `(${columns.map(ident).join(", ")})`, "VALUES", `(${placeholders(columns.length)})`].filter(Boolean).join(" "),
+  update: (table: string, set: string[], where: string[]): string => ["UPDATE", ident(table), "SET", set.map((c) => `${ident(c)} = ?`).join(", "), "WHERE", where.map((c) => `${ident(c)} = ?`).join(" AND ")].join(" "),
+  select: (table: string, columns: string[], whereColumn: string): string => ["SELECT", columns.map(ident).join(", "), "FROM", ident(table), "WHERE", `${ident(whereColumn)} = ?`].join(" "),
+};
+
 const identityDecode = Column.prototype.mapFromDriverValue;
 type Cols = { key: string; column: Column; name: string }[];
 const columnsOf = (table: SQLiteTable): Cols => Object.entries(getTableColumns(table)).map(([key, column]) => ({ key, column, name: column.name }));
@@ -112,7 +130,7 @@ export function bulkInsert<T extends SQLiteTable>(table: T, rows: T["$inferInser
   if (rows.length === 0) return;
   const cols = columnsOf(table);
   const stmt = prepared(`insert:${opts.ignoreConflicts ? "ignore:" : ""}${getTableName(table)}`, () =>
-    getSqlite().prepare(`INSERT ${opts.ignoreConflicts ? "OR IGNORE " : ""}INTO "${getTableName(table)}" (${cols.map((c) => `"${c.name}"`).join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`));
+    getSqlite().prepare(sqlText.insert(getTableName(table), cols.map((c) => c.name), !!opts.ignoreConflicts)));
   const run = getSqlite().transaction((batch: Record<string, unknown>[]) => {
     for (const r of batch) stmt.run(cols.map((c) => encode(c, r[c.key])));
   });
@@ -127,7 +145,7 @@ export function bulkUpdate<T extends SQLiteTable>(table: T, where: (keyof T["$in
   const setCols = pick(set);
   const whereCols = pick(where);
   const stmt = prepared(`update:${getTableName(table)}:${set.join(",")}:${where.join(",")}`, () =>
-    getSqlite().prepare(`UPDATE "${getTableName(table)}" SET ${setCols.map((c) => `"${c.name}" = ?`).join(", ")} WHERE ${whereCols.map((c) => `"${c.name}" = ?`).join(" AND ")}`));
+    getSqlite().prepare(sqlText.update(getTableName(table), setCols.map((c) => c.name), whereCols.map((c) => c.name))));
   const run = getSqlite().transaction((batch: Record<string, unknown>[]) => {
     for (const r of batch) stmt.run([...setCols.map((c) => encode(c, r[c.key])), ...whereCols.map((c) => encode(c, r[c.key]))]);
   });
@@ -140,7 +158,7 @@ export function projectRows<T extends SQLiteTable>(table: T, projectId: string):
   const name = getTableName(table);
   const projectCol = cols.find((c) => c.key === "projectId");
   if (!projectCol) throw new Error(`Table ${name} has no projectId column`);
-  const stmt = prepared(`select:${name}`, () => getSqlite().prepare(`SELECT ${cols.map((c) => `"${c.name}"`).join(", ")} FROM "${name}" WHERE "${projectCol.name}" = ?`).raw(true));
+  const stmt = prepared(`select:${name}`, () => getSqlite().prepare(sqlText.select(name, cols.map((c) => c.name), projectCol.name)).raw(true));
   const decoders = prepared(`decoders:${name}`, () => cols.map((c) => (c.column.mapFromDriverValue !== identityDecode ? (c.column.mapFromDriverValue.bind(c.column) as (v: unknown) => unknown) : null)));
   const keys = cols.map((c) => c.key);
   const rows = (stmt as Database.Statement).all(projectId) as unknown[][];

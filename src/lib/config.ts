@@ -51,6 +51,12 @@ export const config = {
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
     /** Required by API keys that are not scoped to one workspace. Sent as the anthropic-workspace-id header. */
     anthropicWorkspaceId: process.env.ANTHROPIC_WORKSPACE_ID,
+    /** Longest one request to a provider may take before it is abandoned (per attempt). */
+    requestTimeoutMs: int("AI_REQUEST_TIMEOUT_MS", 180_000),
+    /** Longest one analysis task may take in total, retries included, so a stuck provider cannot hold a job forever. */
+    callDeadlineMs: int("AI_CALL_DEADLINE_MS", 8 * 60_000),
+    /** Longest the credential check may take; the status endpoint and health checks wait on it. */
+    healthTimeoutMs: int("AI_HEALTH_TIMEOUT_MS", 20_000),
     openaiBaseUrl: process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
     openaiApiKey: process.env.OPENAI_API_KEY,
     embeddingModel: process.env.AI_EMBEDDING_MODEL,

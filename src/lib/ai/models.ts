@@ -1,4 +1,5 @@
 import { config } from "../config";
+import { withDeadline } from "./deadline";
 import { AnthropicProvider } from "./anthropic";
 import { explainAIError } from "./errors";
 import { OpenAICompatibleProvider } from "./openai";
@@ -60,7 +61,7 @@ export function clearModelCache(): void {
 
 function fetchCatalogue(id: ProviderId): Promise<ModelOption[]> {
   const p = id === "anthropic" ? new AnthropicProvider({ apiKey: config.ai.anthropicApiKey }) : new OpenAICompatibleProvider();
-  return p.listModels();
+  return withDeadline(p.listModels(), config.ai.healthTimeoutMs, "Listing models");
 }
 
 function split(all: ModelOption[]): { chat: ModelOption[]; embedding: ModelOption[] } {

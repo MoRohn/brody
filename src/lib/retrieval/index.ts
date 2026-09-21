@@ -2,7 +2,8 @@ import { and, eq } from "drizzle-orm";
 import { bulkInsert, getDb, schema, projectRows } from "../db/client";
 import type { FileRow, FindingRow, RelationshipRow, SymbolRow } from "../db/schema";
 import { getFileContents } from "../ingest/store";
-import { getAIProvider } from "../ai";
+import { getAIProvider, withDeadline } from "../ai";
+import { config } from "../config";
 import type { EvidenceItem } from "../ai/prompt";
 import { sliceLines, tokenize } from "../util/text";
 
@@ -89,7 +90,7 @@ export async function buildSearchIndex(projectId: string, opts: { embed?: boolea
   if (opts.embed && provider?.embed) {
     const targets = rows.filter((r) => r.kind === "symbol" || r.kind === "file").slice(0, 4000);
     try {
-      const vecs = await provider.embed(targets.map((r) => r.text.slice(0, 600)));
+      const vecs = await withDeadline(provider.embed(targets.map((r) => r.text.slice(0, 600))), config.ai.callDeadlineMs, "Embedding the repository");
       targets.forEach((r, i) => { r.embedding = vecs[i]; });
       embedded = vecs.length;
     } catch { /* semantic retrieval is optional */ }
@@ -203,7 +204,7 @@ export async function search(projectId: string, query: string, opts: RetrievalOp
   let queryEmbedding = opts.queryEmbedding;
   const provider = getAIProvider();
   if (!queryEmbedding && provider?.embed && idx.entries.some((e) => e.embedding)) {
-    try { queryEmbedding = (await provider.embed([query]))[0]; } catch { /* optional */ }
+    try { queryEmbedding = (await withDeadline(provider.embed([query]), config.ai.healthTimeoutMs, "Embedding the question"))[0]; } catch { /* optional */ }
   }
   const k1 = 1.4, b = 0.6;
   const N = idx.entries.length || 1;

@@ -28,13 +28,13 @@ export class AnthropicProvider implements AIProvider {
   constructor(opts: { apiKey?: string; model?: string; client?: Anthropic } = {}) {
     this.model = opts.model ?? resolveModel("anthropic");
     const workspace = config.ai.anthropicWorkspaceId?.trim();
-    this.client = opts.client ?? new Anthropic({ ...(opts.apiKey ? { apiKey: opts.apiKey } : {}), maxRetries: 3, ...(workspace ? { defaultHeaders: { "anthropic-workspace-id": workspace } } : {}) });
+    this.client = opts.client ?? new Anthropic({ ...(opts.apiKey ? { apiKey: opts.apiKey } : {}), maxRetries: 2, timeout: config.ai.requestTimeoutMs, ...(workspace ? { defaultHeaders: { "anthropic-workspace-id": workspace } } : {}) });
     this.fallbacks = process.env.AI_REFUSAL_FALLBACKS !== "off" && /^claude-(fable|mythos|opus-5)/.test(this.model);
   }
 
   /** Cheap credential check used by the status endpoint; a few tokens only. */
   async ping(): Promise<void> {
-    await this.client.messages.create({ model: this.model, max_tokens: 32, messages: [{ role: "user", content: "Reply with OK." }] });
+    await this.client.messages.create({ model: this.model, max_tokens: 32, messages: [{ role: "user", content: "Reply with OK." }] }, { timeout: config.ai.healthTimeoutMs, maxRetries: 0 });
   }
 
   /** Models available to this key, newest first. Paginates through the whole catalogue. */
