@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { recordUsage, UsageLedger, withUsageLedger, type UsageSnapshot } from "@/lib/ai";
 import { costOf, normalizeModelId, priceFor } from "@/lib/ai/pricing";
 import { getDb, schema } from "@/lib/db/client";
+import { GET as overview } from "@/app/api/projects/[id]/overview/route";
 import { analyze, fixtureFiles, freshDb, MockProvider, setAIProvider } from "./helpers";
 
 describe("pricing", () => {
@@ -109,6 +110,12 @@ describe("usage in the analysis pipeline", () => {
     expect(final.costUsd).toBeCloseTo(expected, 9);
     expect(final.stages.map((s) => s.key)).toContain("review");
     expect(final.stages.map((s) => s.key)).toContain("docs");
+
+    // Some requests failed (the scripted docs tasks) but most succeeded: the Overview says so, and does not claim the
+    // whole AI analysis failed and everything shown is deterministic.
+    const o = await (await overview(new Request("http://brody/"), { params: Promise.resolve({ id: r.projectId }) })).json() as { aiProblem: { partial: boolean; failures: number; succeeded: number } };
+    expect(o.aiProblem).toMatchObject({ partial: true });
+    expect(o.aiProblem.succeeded).toBeGreaterThan(0);
   });
 
   it("records no usage and no model when there is no AI provider", async () => {

@@ -25,7 +25,8 @@ export async function GET(_req: Request, { params }: Ctx) {
       ready: true,
       project: summary,
       ai: providerStatus(),
-      aiProblem: (() => { const f = ((analysis.pipeline ?? {}) as { aiFailures?: { task: string; error: string }[] }).aiFailures ?? []; return f.length ? { ...explainAIError(f[0].error), failures: f.length, first: f[0].error.slice(0, 240) } : null; })(),
+      // "partial" when some requests succeeded: the analysis did use AI, and only the failed parts fell back or were skipped.
+      aiProblem: (() => { const p = (analysis.pipeline ?? {}) as { aiFailures?: { task: string; error: string }[]; usage?: { calls?: number } }; const f = p.aiFailures ?? []; return f.length ? { ...explainAIError(f[0].error), failures: f.length, succeeded: p.usage?.calls ?? 0, partial: (p.usage?.calls ?? 0) > 0, first: f[0].error.slice(0, 240) } : null; })(),
       executiveSummary: docs?.executiveSummary ?? [],
       // Older projects have no brief; derive it so every project shows the business summary.
       brief: docs?.brief ?? (docs && arch ? buildBrief(docs, arch, findings, project.name) : null),

@@ -1,53 +1,89 @@
-# Brody: repository intelligence, code review and code map
+<div align="center">
 
-Brody turns source code into system understanding. Give it a file, a folder, a ZIP or a GitHub repository. It indexes the code with real parsers, builds a symbol and dependency graph, reviews it with deterministic analyzers and (optionally) AI, verifies every finding against the source, writes a hierarchical explanation of what the system does, and draws an interactive code map.
+# Brody
+
+**Repository intelligence for any codebase.**
+Evidence-backed code review, Lean 4 proofs of real defects, plain-language system explanations,
+interactive code maps and executive reports, with the cost of every AI request shown live.
+
+[![CI](https://github.com/MoRohn/brody/actions/workflows/ci.yml/badge.svg)](https://github.com/MoRohn/brody/actions/workflows/ci.yml)
+&nbsp;Next.js 16 · TypeScript · SQLite · Lean 4 · Claude or OpenAI
+
+</div>
+
+![Brody's Code Review: a verified finding with evidence, business impact, remediation and a patch validated against the real file](docs/screenshots/review.png)
+
+Give Brody a folder, a ZIP or a GitHub repository. It parses the code with real parsers, builds a symbol and dependency graph, reviews it with deterministic analyzers and (optionally) AI, **proves** what it can with the Lean 4 theorem prover, checks every claim against the source, explains what the system does at every level from one function to the whole product, and draws an interactive map of how it fits together.
+
+An AI model never receives "the whole repo". It reasons over structured repository knowledge (symbols, the call graph, routes, models, retrieved excerpts), and everything it says must cite lines that exist. Imported code is treated as untrusted data and is **never executed**.
 
 ```
-INGEST → NORMALIZE → PARSE → INDEX → SYMBOL GRAPH → DEPENDENCY GRAPH → RETRIEVE → ANALYZE → VERIFY → SYNTHESIZE → DOCUMENT → VISUALIZE
+INGEST → PARSE → SYMBOL & DEPENDENCY GRAPH → RETRIEVE → ANALYZE → PROVE → VERIFY → EXPLAIN → MAP → REPORT
 ```
 
-An LLM never receives "the whole repo". It reasons over structured repository knowledge (symbols, call graph, routes, models, retrieved excerpts) and everything it says must cite lines that exist.
+## Contents
+
+[Tour](#tour) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Features](#features) · [Configuration](#configuration) · [Security model](#security-model) · [Testing and validation](#testing-and-validation) · [Known limitations](#known-limitations)
+
+## Tour
+
+### Findings you can trust
+
+Every finding has an ID, severity, confidence, the exact lines, what happens, why it matters, the business impact, a fix and, where possible, a patch that has been applied to the real file to prove it fits. Static analyzers, AI review and formal proofs are always labelled apart, and AI claims that cannot be grounded in the source are dropped or marked **Needs verification**.
+
+### Defects proved, not guessed
+
+![Formal Proofs: a function modelled in Lean 4, its modelling assumptions, the divergences the fidelity audit weighed, and guarantees proved with the axioms each rests on](docs/screenshots/proofs.png)
+
+The most complex and riskiest functions are modelled in **Lean 4** and checked by Lean's proof kernel. Brody proves guarantees, proves **concrete counterexamples** for real defects (the exact input that breaks the code, ready to become a regression test), confirms AI claims with a proof, and removes false positives by proving the claimed failure cannot happen. A proof counts only if Lean accepts it with nothing beyond its standard axioms, and only after an audit confirms that the model matches the source.
+
+### Know what every run costs
+
+![The AI usage gauge: live tokens and estimated cost, with the model, a per-step breakdown and the pricing basis](docs/screenshots/usage.png)
+
+A gauge on every project page shows the AI tokens and estimated cost of the latest analysis, **updating live** while it runs, with the model that answered, a per-step breakdown and the prices used. Local or unpriced models show tokens and "cost n/a" rather than a guess.
+
+![An analysis in progress: each pipeline step with timers, and the AI cost rising as requests complete](docs/screenshots/progress.png)
+
+### See how it fits together
+
+![Code Map: functional areas laid out by layer, with dependencies, risk marks and a change-impact panel](docs/screenshots/map.png)
+
+The **Code Map** goes from functional areas to files to a single symbol, marks risk, and answers "if I change this, what could I affect?". Shown here: Brody mapping its own code.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/overview.png" alt="Overview: an executive summary of the system and the engineering review"><br><b>Overview.</b> What the system is and does, how it is built and where the risk is, in about 30 seconds.</td>
+<td width="50%"><img src="docs/screenshots/explain.png" alt="System Explanation at the whole-system level"><br><b>System Explanation.</b> Four zoom levels, from the whole system to groups of files, single files and symbols, every statement linked to its source.</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/files.png" alt="Files: tree, source with finding markers and a code-intelligence panel"><br><b>Files.</b> Source with symbol and finding markers, callers, callees, data access, tests and change impact.</td>
+<td><img src="docs/screenshots/architecture.png" alt="Architecture: layers, entry points and functional-area dependencies"><br><b>Architecture.</b> Layers, entry points, API and data-model maps, external services, configuration and CI.</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/ask.png" alt="Ask Repository: a structural question answered exactly from the graph"><br><b>Ask Repository.</b> Structural questions answered exactly from the graph; open questions answered by the model with citations.</td>
+<td><img src="docs/screenshots/deck.png" alt="Executive Deck: a 14-slide leadership briefing"><br><b>Executive Deck.</b> A 14-slide briefing in business language, as PowerPoint, PDF or a web page.</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/map-dark.png" alt="The Code Map at the Darkest brightness level"><br><b>Five brightness levels,</b> all checked for WCAG AA contrast.</td>
+<td><img src="docs/screenshots/home.png" alt="Home: upload files, a folder or a ZIP, import from GitHub, or open a Brody export"><br><b>Start</b> with files, a folder, a ZIP, a GitHub repository or a Brody export.</td>
+</tr>
+</table>
 
 ## Quick start
 
-### Start Brody with one command
+### Docker
 
 ```bash
-start brody      # builds if needed, launches in the background, then opens http://brody:3003 in your browser
-brody stop       # also: brody status | restart | logs | open   (restart opens the browser too)
-start brody --no-open   # start or restart without opening a browser (or set BRODY_OPEN=0)
+cp .env.example .env        # optional: add ANTHROPIC_API_KEY or OPENAI_API_KEY to enable AI features
+docker compose up --build   # then open http://brody:3003
 ```
 
-`start brody` and `brody` are small commands in `~/.local/bin` that point at `scripts/brody.sh`. To install them on another machine:
+The image (Node 24, non-root, all capabilities dropped) includes Ruff for Python analysis and a Lean 4 toolchain for formal verification, and keeps its SQLite database in the `brody-data` volume.
 
-```bash
-ln -s "$(pwd)/scripts/brody.sh" ~/.local/bin/brody
-```
+### Local
 
-Inside the repository, `npm run brody` does the same as `brody start`. Logs are in `data/brody.log`.
-
-### Address
-
-Brody is served at **http://brody:3003** and refuses requests addressed to `localhost` or any other hostname (`ALLOWED_HOSTS`). Make the name resolve once:
-
-```bash
-echo "127.0.0.1 brody" | sudo tee -a /etc/hosts
-```
-
-Change the port with `PORT`; set `ALLOWED_HOSTS=` (empty) to disable the host check.
-
-### Docker (one command)
-
-```bash
-cp .env.example .env        # optional: add ANTHROPIC_API_KEY to enable AI features
-docker compose up --build   # http://brody:3003
-```
-
-The image is Node 24, runs as a non-root user with all capabilities dropped, and stores its SQLite database in the `brody-data` volume. Ruff is installed for Python analysis, and a Lean 4 toolchain for formal verification (reduced to what proof checking needs; the build argument `LEAN_TOOLCHAIN` pins the version). Building the image needs roughly 1.5 GB of free RAM in the Docker VM (default Docker Desktop settings work).
-
-### Local development
-
-Requires Node 24+ (optionally `ruff` and `python3` on PATH for Python analysis).
+Requires Node 24+ (optionally `ruff` and `python3` for Python analysis, and [Lean 4](https://lean-lang.org/install) for formal verification).
 
 ```bash
 npm install
@@ -55,55 +91,69 @@ cp .env.example .env        # optional
 npm run dev                 # http://brody:3003
 ```
 
-Then upload `fixtures/sample-shop` (or a ZIP of it) to see the whole workflow on a small, deliberately flawed shop backend.
+Brody answers at **http://brody:3003** and refuses other host names (`ALLOWED_HOSTS`). Make the name resolve once with `echo "127.0.0.1 brody" | sudo tee -a /etc/hosts`, or set `ALLOWED_HOSTS=` (empty) to turn the check off. Then upload `fixtures/sample-shop`, a small, deliberately flawed shop backend, to see the whole workflow.
+
+### One command, in the background
+
+```bash
+start brody             # builds if needed, starts in the background and opens the browser
+brody stop              # also: brody status | restart | logs | open
+start brody --no-open   # or set BRODY_OPEN=0
+```
+
+`start brody` and `brody` point at `scripts/brody.sh`; install them elsewhere with `ln -s "$(pwd)/scripts/brody.sh" ~/.local/bin/brody`. Inside the repository, `npm run brody` does the same. Logs are in `data/brody.log`.
 
 ### Command line
 
 ```bash
-npm run analyze -- ./path/to/project --out ./report   # writes CODEBASE_REPORT.md, report.pdf, report.docx, report.html, report.json
+npm run analyze -- ./path/to/project --out ./report   # CODEBASE_REPORT.md, report.pdf, report.docx, report.html, report.json
 npm run convert -- notes.md                            # any Markdown file to PDF and Word with the same renderers
-npm run benchmark -- 200 1000 3000                     # pipeline and export timings on synthetic repositories
-npm run worker                                         # optional standalone job worker (set EMBEDDED_WORKER=off on the web server)
-npm run verify:ai                                      # live check of your AI provider on the sample repo (billable)
+npm run worker                                         # optional standalone job worker (EMBEDDED_WORKER=off on the web server)
 ```
 
-## What you get
+## How it works
+
+**Deterministic first.** Files are classified (source, test, config, docs, schema, CI, infra, manifest, generated, vendor, binary), hashed and language-detected. Tree-sitter grammars (TypeScript/TSX, JavaScript, Python, Go, Java, C#, Ruby, Rust, PHP, CSS, HTML, JSON, Shell) produce symbols, imports, calls and inheritance; SQL, Prisma, GraphQL, Markdown and YAML have purpose-built parsers; other languages fall back to text inspection and are marked as such, never as AST. Imports are resolved to files (including tsconfig path aliases), calls to symbols with a confidence score, and ORM and query calls become `READS_FROM`/`WRITES_TO` edges. Routes, models, entry points, external services, environment variables, tests and infrastructure are detected from those facts, and importance is a PageRank over the graph.
+
+**Review is layered and honest about origin.**
+
+1. **Static:** built-in pattern rules, TypeScript syntax diagnostics, ESLint with a fixed embedded rule set, Python `ast` and Ruff (`--isolated`), `gofmt -e`, plus structural checks (size, complexity, tests, secrets, auth consistency, operations).
+2. **AI:** five focused passes (security; reliability and correctness; performance and data; architecture and API; testing and operations), each over retrieved excerpts plus graph facts (callers, callees, routes, packages).
+3. **Formal verification (Lean 4):** the functions that most need it (open AI claims first, then high complexity, arithmetic and comparison density, and names that decide amounts, limits, state or access) are modelled in Lean by the AI and checked by Lean's kernel. Lean's exact errors are fed back for repair rounds, and complex functions get more rounds and more properties. A theorem counts only if Lean proves it with nothing beyond its three standard axioms (`#print axioms`, added by Brody), so `sorry`, custom axioms and compiler-trusted tactics cannot pass. Because a proof about the wrong model proves nothing, a separate audit compares the model with the source and replays every counterexample by hand on the original code. A counterexample becomes a *Proved (Lean 4)* finding with the failing input; a claim proved true is **Verified**; a claim proved impossible is removed. Unchanged functions reuse their proofs.
+4. **Verification:** an AI finding survives only if its file exists, its quoted evidence is found in that file (line numbers are re-anchored to where the quote really is), its patch applies cleanly, and a second sceptical AI pass does not reject it. Otherwise it is dropped or marked **Needs verification**.
+
+**Documentation is built bottom-up:** symbol → file → functional area → architecture → executive summary. A deterministic baseline is generated from the graph for everything, and AI enriches it with narrative. Statements whose evidence does not resolve to real lines are dropped, contradictions are re-checked against the source, and data-access claims are cross-checked against the graph.
+
+**Incremental.** Parses are cached by content hash and AI explanations and proofs by the content they depend on, so re-analysing a changed repository re-processes only what changed ("18 changed, 242 unchanged, 3 removed, 5 added").
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for design decisions and extension points.
+
+## Features
 
 | Area | What it does |
 | --- | --- |
-| **Intake** | One **Select your code** section with two collapsible options: **Upload** (files, a folder or a ZIP; open by default) and **Import repository** (GitHub, with branch, tag, commit and an optional token for private repos). Repository metadata (owner, branch, latest commit, languages, file count, size) is shown before analysis. Long waits show a spinner, a moving progress bar, the current step and live timers. |
-| **Overview** | What the system is, what it does, how it works, its technology, statistics and a summary of the engineering review, answerable in about 30 seconds. No meaningless quality score. |
-| **Code Review** | Findings with ID (`SEC-004`), severity, confidence, file and line range, evidence, plain-English behaviour, why it matters, business impact, remediation and a suggested patch that is validated against the real file. Filter by severity, category, source, status, confidence and functional area. |
-| **AI usage and cost** | A gauge in the header of every project page shows the latest analysis's AI tokens and estimated cost, **updating live** while it runs. Open it (or watch the progress screen) for the model ID and provider, input, output and cache tokens, the number of requests, a per-step breakdown (AI review, formal verification, verification, documentation, embeddings), each model's rate and the pricing basis. If a server-side fallback answers with another model, that model is listed and priced separately. Tokens are the counts the provider reports; cost uses list prices (Anthropic and OpenAI, dated) or your own rates, and is shown as *n/a* rather than guessed for local or unknown models. |
-| **Formal Proofs** | The most complex and riskiest functions are modelled in **Lean 4** and checked by Lean's proof kernel. Brody proves guarantees ("a discount never exceeds the price"), proves **concrete counterexamples** for real defects (the exact input that breaks the code, ready to become a regression test), confirms AI review claims with a proof and **removes false positives** by proving the claimed failure cannot happen. Each result shows the Lean model, the theorem, the axioms it rests on and the fidelity audit. Proven defects appear in Code Review as *Proved (Lean 4)*. |
-| **System Explanation** | Explanations at four zoom levels, each on its own tab so scales never blur. **Whole system:** executive summary, architecture, runtime flow, data flows, API and data architecture, integrations, infrastructure, testing, security, risks and recommendations. **Groups of files:** functional areas *and* folders, each explaining how its files work together (who coordinates, what is shared, what the rest of the system uses, what it depends on), with a table that links down to each file. You can also pick **any set of files or folders** and have them explained together, structurally at once or written by the AI. **Single files:** one file at a time, with links up to its folder and area. **Symbols:** functions, classes and endpoints. Evidence links open the code. |
-| **Architecture** | Layer map, entry points, API map, data-model map with ER diagram, external services (what fails if they are down), internal and external dependencies, environment variables (names only), ports, feature flags, CI and infrastructure, test map. |
-| **Code Map** | Interactive graph at three levels (functional areas → files → one symbol) with drill-down, a consistent legend, risk marks, Mermaid export and a **change-impact** panel: "if I modify this, what could I affect?" |
-| **Files** | Three-pane explorer: file tree, source with symbol and finding markers, and a code-intelligence panel (purpose, symbols, callers, callees, data access, tests, findings, impact). Panels are resizable. |
-| **Ask Repository** | Structural questions ("who depends on X?", "what writes to `orders`?", "what happens after `POST /checkout`?", "where is X defined?") are answered exactly from the graph. Open-ended questions are answered by the model from retrieved excerpts. Every answer cites lines and says so when the evidence is insufficient. |
-| **Search** | ⌘K across files, paths, symbols, code, findings and generated documentation, with language, symbol type, severity, category and functional-area filters. |
-| **Reports and downloads** | Every result view has a **Download** menu with PDF, Word (.docx) or Markdown, plus a web page and structured JSON. The main report is **condensed**: it opens with a business **Executive Summary** (headline, key numbers, key points, health and risk, prioritised next steps; in the PDF these are five landscape slides), and the original in-depth text follows as **Summary evidence** with sources. The **Complete Technical Report** scope keeps every finding, file, symbol and map in full. Other scopes: code review, system explanation, architecture, code map, Q&A. A **Brody bundle** (.zip) exports the whole project so it can be reopened later. |
-| **Executive deck** | A 14-slide leadership briefing (**Executive Deck** in the sidebar, and on the Reports page) built from the same analysis as the report: what the system does, how it is built, where the risk is, what to do next, in business language with charts, tables and a system diagram. Download it as **PowerPoint** (editable, with speaker notes), **PDF** or a self-contained **web page** you can present from. Every slide names the report section behind it and uses the report's own numbers and finding references. `GET /api/projects/:id/deck?format=pptx\|pdf\|html` |
+| **Intake** | Upload files, a folder or a ZIP, or import from GitHub (branch, tag, commit, optional token for private repositories). Repository metadata is shown before analysis; long waits show the current step, a moving progress bar and live timers. |
+| **Overview** | What the system is, what it does, how it works, its technology, statistics and the engineering review, answerable in about 30 seconds. No meaningless quality score. |
+| **Code Review** | Findings with ID (`SEC-004`), severity, confidence, file and lines, evidence, plain-English behaviour, why it matters, business impact, remediation and a validated patch. Filter by severity, category, source, status, confidence and functional area. |
+| **Formal Proofs** | Lean 4 models of the riskiest functions, with guarantees, counterexamples, confirmed and refuted AI claims, the axioms each proof rests on, the modelling assumptions and the fidelity audit. |
+| **AI usage and cost** | Live tokens and estimated cost in the header of every project page and on the progress screen: model and provider, input, output and cache tokens, requests, a per-step breakdown and the pricing basis. Fallback models are listed and priced separately. |
+| **System Explanation** | Four zoom levels on separate tabs: the whole system; groups of files (functional areas and folders, or any set you pick); single files; symbols. Evidence links open the code. |
+| **Architecture** | Layer map, entry points, API map, data-model map with ER diagram, external services (and what fails if they are down), dependencies, environment variables (names only), ports, feature flags, CI and infrastructure, test map. |
+| **Code Map** | Interactive graph at three levels (functional areas → files → one symbol) with drill-down, a consistent legend, risk marks, Mermaid export and a change-impact panel. |
+| **Files** | File tree, source with symbol and finding markers, and a code-intelligence panel (purpose, symbols, callers, callees, data access, tests, findings, impact). |
+| **Ask Repository** | Structural questions ("who depends on X?", "what writes to `orders`?", "what happens after `POST /checkout`?") answered exactly from the graph; open questions answered by the model from retrieved excerpts. Every answer cites lines and says when the evidence is insufficient. |
+| **Search** | ⌘K across files, paths, symbols, code, findings and generated documentation, with filters. |
+| **Reports** | Every view downloads as PDF, Word or Markdown, plus a web page and JSON. The main report opens with a business Executive Summary; the Complete Technical Report keeps every finding, file, symbol and map. |
+| **Executive Deck** | A 14-slide leadership briefing from the same analysis, as editable PowerPoint with speaker notes, PDF or a web page you can present from. Every slide names the report section behind it. |
+| **Brody bundle** | Export a whole project as one `.zip` (analysis, source with secrets redacted, reports, one-click launchers) and reopen it in any Brody with the full interface and no re-analysis. |
 
-The Markdown report follows a fixed order (Executive Summary → … → Recommendations → **Detailed Code Map** → **Legend**) and folder explanations sit inside Major Functional Areas so the required order never changes; the code map ends with tree, component map, flow map, dependency map, API map, data-model map, test map, integration map, high-risk map, change-impact relationships and legend.
+### Brody bundle
 
-## Export a project and open it again (Brody bundle)
+**Export > Brody bundle** downloads one `.zip` with the analysis behind every view, the source (detected secrets redacted), ready-made reports, a README and one-click launchers. Open it from **Open a Brody export** on the home page (or drop it on the ZIP upload); run `Open in Brody.command` (macOS), `open-in-brody.sh` (Linux) or `Open in Brody.bat` (Windows, untested) to send it to a running Brody; or read `reports/Report.html` without Brody at all. Bundles are validated before anything is written, and importing always creates a new project. API: `GET /api/projects/:id/export?format=bundle`, `POST /api/projects/import-bundle`.
 
-**Export > Brody bundle** (in the Export menu or on the Reports page) downloads one `.zip` with everything: the analysis data behind every view, the source (detected secrets redacted), ready-made reports (PDF, Word, Markdown, HTML), a README and one-click launchers.
+### Look and feel
 
-To open it:
-
-* **In the interface:** on the home page open **Open a Brody export** and choose the zip, or simply drop it on the ordinary ZIP upload. The project appears with the full interface (review, explain, map, files, ask, export) and is marked *imported*. Nothing is re-analysed, so it works on any Brody, even one with no AI key.
-* **One double-click:** unzip it and run `Open in Brody.command` (macOS; the first time, right-click and choose Open. If macOS still refuses it, open Terminal, `cd` into the unzipped folder and run `bash "Open in Brody.command"`), `open-in-brody.sh` (Linux) or `Open in Brody.bat` (Windows, untested). The launcher sends the export to the Brody running at `http://brody:3003` (or `http://localhost:3003`; set `BRODY_URL` for another address) and opens the imported project in your browser.
-* **Without Brody:** open `reports/Report.html`, `reports/Report.pdf` or `reports/Report.docx`.
-
-Importing always makes a new project with new ids, so the same file can be imported more than once. Bundles are validated before anything is written, and an invalid or hostile file is refused whole. The API is `GET /api/projects/:id/export?format=bundle` and `POST /api/projects/import-bundle`.
-
-## Look and feel
-
-The interface uses one blue palette family built on deep navy `#1B4965` and cerulean `#006C96`, with Geist for text, Playfair Display for headings and Lora for long-form documentation. The **sun or moon button** in the header opens a brightness control with five levels: Bright, Original, Default, Dark and Darkest. Choose one by dragging the slider, using the arrow keys, or clicking a level name. The choice is remembered and applied before the page paints. A first visit follows your system's dark preference.
-
-Every text and surface pair is checked against WCAG AA at all five levels by `tests/theme.test.ts`, which reads the palette straight from `src/app/globals.css`, and by an axe scan of every page at every level. Diagrams, code highlighting and the PDF, Word and HTML reports use the same palette.
+One blue palette family (deep navy `#1B4965`, cerulean `#006C96`), Geist for text, Playfair Display for headings and Lora for long-form documentation. The sun or moon button offers five brightness levels, from Bright to Darkest, remembered and applied before the page paints. Every text and surface pair is checked against WCAG AA at all five levels, and every page is scanned with axe at every level.
 
 ## Configuration
 
@@ -111,114 +161,82 @@ All configuration is environment variables; see [`.env.example`](.env.example).
 
 | Variable | Purpose |
 | --- | --- |
-| `AI_PROVIDER` | `auto` (default: Anthropic if its key is set, otherwise OpenAI), `anthropic`, `openai-compatible`, `none`. Overridden by the AI settings panel |
+| `AI_PROVIDER` | `auto` (Anthropic if its key is set, otherwise OpenAI), `anthropic`, `openai-compatible`, `none`. Overridden by the AI settings panel |
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | Anthropic access; default model `claude-opus-5` |
-| `ANTHROPIC_WORKSPACE_ID` | Needed if your key is not scoped to one workspace (the API otherwise returns *"This API key is not scoped to a workspace"*) |
-| `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL` | OpenAI, or any compatible chat endpoint (Azure OpenAI v1, vLLM, Ollama, gateways); default model `gpt-4.1`. A local endpoint needs no key |
-| `AI_MODEL` | Legacy single model setting; applies only to the provider the environment selects |
-| `AI_EMBEDDING_MODEL` | Enables semantic retrieval through an OpenAI-compatible embeddings endpoint |
-| `AI_CONCURRENCY`, `AI_MAX_FILES_REVIEWED`, … | Bounded concurrency and token budgeting |
-| `AI_PRICING` | Your own rates for the cost estimate, as JSON in USD per million tokens, e.g. `{"llama3:70b": {"input": 0.5, "output": 1}, "claude-opus-5": {"input": 4, "output": 20, "cachedInput": 0.4}}`. Overrides the built-in list prices (see `src/lib/ai/pricing.ts`, dated `PRICES_AS_OF`); needed to price self-hosted or gateway endpoints |
+| `ANTHROPIC_WORKSPACE_ID` | Needed if your key is not scoped to one workspace |
+| `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL` | OpenAI or any compatible endpoint (Azure OpenAI v1, vLLM, Ollama, gateways); default model `gpt-4.1`. A local endpoint needs no key |
+| `AI_EMBEDDING_MODEL` | Semantic retrieval through an OpenAI-compatible embeddings endpoint |
+| `AI_CONCURRENCY`, `AI_MAX_FILES_REVIEWED`, `AI_MAX_MODULES_EXPLAINED`, … | Concurrency and token budgeting |
+| `AI_PRICING` | Your own rates for the cost estimate, as JSON in USD per million tokens, e.g. `{"llama3:70b": {"input": 0.5, "output": 1}}`. Overrides the dated list prices in `src/lib/ai/pricing.ts` |
+| `FORMAL_VERIFICATION`, `LEAN_BIN`, `FORMAL_MAX_TARGETS`, `FORMAL_MAX_REPAIR_ROUNDS`, `FORMAL_CONCURRENCY`, `FORMAL_TIMEOUT_MS`, `FORMAL_MEMORY_MB`, `FORMAL_MAX_HEARTBEATS`, `FORMAL_SANDBOX` | Lean 4 formal verification. Needs an AI provider and Lean (`lean` on PATH or in `~/.elan/bin`, or `LEAN_BIN`); otherwise the stage is skipped with the reason |
 | `GITHUB_TOKEN` | Optional server-wide token; users can also paste a token per import |
-| `CREDENTIAL_SECRET` | Encrypts stored per-project GitHub tokens across restarts (otherwise they live only for the process) |
-| `DATABASE_PATH`, `MAX_*` | Storage location and hard limits on files, bytes, ZIP entries and compression ratio. `MAX_UPLOAD_BYTES` (200 MB by default) is also the size Next.js buffers per request; larger uploads are refused with a clear message |
-| `AI_MAX_MODULES_EXPLAINED` | How many folders get an AI-written explanation of how their files work together (default 24; the rest are explained from the dependency graph) |
+| `CREDENTIAL_SECRET` | Encrypts stored GitHub tokens across restarts |
+| `DATABASE_PATH`, `MAX_*` | Storage location and hard limits on files, bytes, ZIP entries and compression ratio (`MAX_UPLOAD_BYTES`, 200 MB by default) |
 | `STATIC_ANALYSIS`, `RUFF_PATH`, `PYTHON_PATH` | Language analyzer controls |
-| `FORMAL_VERIFICATION`, `LEAN_BIN`, `FORMAL_MAX_TARGETS`, `FORMAL_MAX_REPAIR_ROUNDS`, `FORMAL_CONCURRENCY`, `FORMAL_TIMEOUT_MS`, `FORMAL_MEMORY_MB`, `FORMAL_MAX_HEARTBEATS`, `FORMAL_SANDBOX` | Lean 4 formal verification. Needs an AI provider and a Lean toolchain (`lean` on PATH or in `~/.elan/bin`; install with [elan](https://lean-lang.org/install)); otherwise the stage is skipped with the reason. The Docker image ships Lean (`LEAN_BIN=/opt/lean/bin/lean`) |
-| `PARSE_WORKERS`, `PARSE_WORKER_MIN_FILES` | Worker threads for parsing and the per-file checks. `PARSE_WORKERS=0` keeps everything in-process; by default up to 4 workers are used when the machine has spare cores and about 300 MB of memory each. Repositories under `PARSE_WORKER_MIN_FILES` (400) files stay in-process. `npm run build` also builds the worker (`dist/parse-worker.cjs`); without it, development runs the TypeScript source through `tsx`, and if no worker can start Brody parses in-process, with identical results |
-| `EMBEDDED_WORKER` | `off` to run the worker separately with `npm run worker` |
+| `PARSE_WORKERS`, `PARSE_WORKER_MIN_FILES` | Parse worker threads (up to 4 by default, sized to the memory available, from 400 files) |
+| `EMBEDDED_WORKER` | `off` to run the job worker separately with `npm run worker` |
 
-### Using Claude or OpenAI, and choosing models
+### Using Claude or OpenAI
 
-Brody works with either API. Click the AI chip at the top right of the home page to open **AI settings**:
+Click the AI chip on the home page to open **AI settings**: choose a provider (Automatic, Anthropic, OpenAI or compatible, or Off) and a model from the provider's own list, then **Save and test** to apply it without a restart and confirm the key, endpoint and model with one small request. Keys are read from `.env` only and are never displayed, returned by the API or stored by the panel. The same is available over HTTP: `GET /api/ai/settings`, `PUT /api/ai/settings[?test=1]`, `GET /api/ai/models?provider=…`.
 
-* **Provider:** Automatic, Anthropic (Claude), OpenAI or compatible, or Off. Each shows whether its key is present. Keys are read from `.env` only and are never displayed, returned by the API or stored by the panel.
-* **Model:** a menu per provider, filled from the provider's own model list. **Refresh models** re-fetches it (Anthropic `GET /v1/models`, OpenAI `GET /models`). Models that cannot do structured output are shown but disabled, and non-chat OpenAI models (embeddings, audio, image, Responses-only) are hidden. If a list cannot be fetched you get built-in suggestions and the reason, and you can always choose **Other model ID…** and type one.
-* **Save and test** applies the choice immediately, with no restart, and makes one small request to confirm the key, endpoint and model work. The choice is saved in `data/ai-settings.json` (owner-only) and is shared with the background worker. **Reset to defaults** returns to `.env`.
-
-The same is available over HTTP: `GET /api/ai/settings`, `PUT /api/ai/settings[?test=1]` and `GET /api/ai/models?provider=anthropic|openai-compatible[&refresh=1]`.
-
-OpenAI-compatible endpoints differ, so the provider adapts and remembers: `max_completion_tokens` for OpenAI and `max_tokens` elsewhere (switching if the endpoint rejects one), `json_schema` structured output falling back to `json_object` and then prompt-only JSON, retries with backoff on rate limits and server errors, and a larger budget when a reasoning model runs out of tokens.
-
-Without an AI provider Brody still runs every deterministic stage. The report says so plainly and the AI stages show as *skipped*. If a provider is configured but failing, the home page shows a key problem and the analysis stages show a warning with a fix, rather than reporting success.
-
-## How it works
-
-**Deterministic first.** Files are classified (source, test, config, docs, schema, CI, infra, manifest, generated, vendor, binary), hashed and language-detected. Tree-sitter grammars (TypeScript/TSX, JavaScript, Python, Go, Java, C#, Ruby, Rust, PHP, CSS, HTML, JSON, Shell) produce symbols, imports, calls and inheritance; SQL, Prisma, GraphQL, Markdown and YAML have purpose-built parsers; other languages fall back to text inspection and are marked as such (`text-parsed`), never as AST. Imports are resolved to files (including tsconfig path aliases), calls are resolved to symbols with a confidence score, and ORM/query calls become `READS_FROM`/`WRITES_TO` edges. Routes, models, entry points, external services, environment variables, tests and infrastructure are detected from those facts, and importance is a PageRank over the graph.
-
-**Review is layered and honest about origin.**
-1. Static: built-in pattern rules, TypeScript syntax diagnostics, ESLint with a fixed embedded rule set, Python `ast` and Ruff (`--isolated`), `gofmt -e`, plus structural checks (size, complexity, tests, secrets, auth consistency, operations).
-2. AI: five focused passes (security; reliability and correctness; performance and data; architecture and API; testing and operations), each over retrieved excerpts plus graph facts (callers, callees, routes, packages).
-3. Formal verification (Lean 4): the functions that most need it (open AI claims first, then high cyclomatic complexity, arithmetic and comparison density, names that decide amounts, limits, state or access) are modelled in Lean by the AI and checked by Lean's kernel. Lean's exact errors are fed back for repair rounds, and complex functions get more rounds and more properties. A theorem counts only if Lean proves it with nothing beyond its three standard axioms (`#print axioms`, added by Brody), so `sorry`, custom axioms and compiler-trusted tactics cannot pass. Because a proof about the wrong model proves nothing, a separate audit compares the model with the source and replays every counterexample by hand on the original code. Then: a counterexample becomes a *Proved (Lean 4)* finding with the failing input; a claim proved true skips the AI verifier as **Verified**; a claim proved impossible is removed. Unchanged functions reuse their proofs on re-analysis.
-4. Verification: an AI finding survives only if its file exists, its quoted evidence is found in that file (line numbers are re-anchored to where the quote really is), its patch applies cleanly, and a second sceptical AI pass does not reject it. Otherwise it is dropped or marked **Needs verification**. Static findings are labelled *Static analyzer*, AI findings *AI-inferred*, proofs *Proved (Lean 4)*.
-
-**Documentation is built bottom-up:** symbol → file → functional area → architecture → executive summary. A deterministic baseline is generated from the graph for everything; AI enriches it with narrative. Statements whose evidence does not resolve to real lines are dropped. Contradictions between summaries are detected, re-checked against retrieved source and recorded with their resolution; generated data-access claims are cross-checked against the graph.
-
-**Incremental analysis.** Parses are cached by content hash and AI explanations by file hash plus the hashes of the file's dependencies, so re-analysing a changed repository re-processes only what changed ("18 changed, 242 unchanged, 3 removed, 5 added").
+OpenAI-compatible endpoints differ, so the client adapts and remembers: `max_completion_tokens` or `max_tokens`, `json_schema` structured output falling back to `json_object` and then prompt-only JSON, retries with backoff, and a larger budget when a reasoning model runs out of tokens. Without an AI provider every deterministic stage still runs, and the AI stages say plainly that they were skipped.
 
 ## Security model
 
 Imported code is **untrusted data** and is never executed.
 
-* ZIPs are read in memory: entry-count, per-file, total-size and compression-ratio limits; `..`, absolute and drive paths rejected; symlinks skipped. Local folder reads never follow symlinks.
-* Nothing from a repository runs. Analyzers only parse: TypeScript syntax check, ESLint with an embedded config (repository ESLint configs are JavaScript and are ignored), Python `ast` in isolated mode, Ruff `--isolated`, `gofmt -e`. `mypy` and `go vet` are deliberately **not** run outside a sandbox because they load plugins or resolve modules; the report lists them as skipped. Subprocesses use no shell, a minimal environment and a timeout.
-* Lean: the Lean source is written by a model that read untrusted code, so it is treated as hostile. Before Lean runs, every construct that can execute code or fake a proof is refused (`#eval` and every `#` command, `import`, `macro`/`syntax`/`elab`, `initialize`, `unsafe`, `extern`/`implemented_by`, `native_decide`, `IO`, `set_option`, `sorry`, `axiom`). Lean then runs from the toolchain binary (not the elan proxy) with no shell, no inherited environment (no API keys), a private temporary directory, a memory cap, a heartbeat limit and a hard kill; `FORMAL_SANDBOX` can add an isolation wrapper such as bubblewrap without network. Repository code itself is still never run.
-* Prompt injection: every repository-derived string sent to a model sits inside `<untrusted_repository_content>` tags, embedded copies of that delimiter are neutralised, and the system prompt tells the model to treat the block as data. A test proves injected text stays inside the block.
-* Secrets are detected before model use and replaced with `[REDACTED_SECRET]`; findings show masked previews and never store the value. GitHub tokens are only ever sent as an `Authorization` header, encrypted at rest with AES-256-GCM, scrubbed from logs and errors, and never returned by the API.
+* ZIPs are read in memory with entry-count, size and compression-ratio limits; `..`, absolute and drive paths are rejected and symlinks skipped.
+* Analyzers only parse: TypeScript syntax, ESLint with an embedded config (repository configs are JavaScript and are ignored), Python `ast` in isolated mode, Ruff `--isolated`, `gofmt -e`. `mypy` and `go vet` are deliberately not run because they load plugins or resolve modules. Subprocesses use no shell, a minimal environment and a timeout.
+* Lean source is written by a model that read untrusted code, so it is treated as hostile: every construct that can execute code or fake a proof is refused before Lean runs (`#eval` and every `#` command, `import`, `macro`/`syntax`/`elab`, `initialize`, `unsafe`, `extern`/`implemented_by`, `native_decide`, `IO`, `set_option`, `sorry`, `axiom`), and Lean runs with no inherited environment, a private temporary directory, a memory cap, a heartbeat limit and a hard kill. `FORMAL_SANDBOX` can add an isolation wrapper such as bubblewrap without network.
+* Every repository-derived string sent to a model sits inside `<untrusted_repository_content>` tags with embedded delimiters neutralised; a test proves injected text stays inside.
+* Secrets are detected before model use and replaced with `[REDACTED_SECRET]`. GitHub tokens are only sent as an `Authorization` header, encrypted at rest with AES-256-GCM, scrubbed from logs and never returned by the API.
 * Exports escape all repository-derived content.
 
-**There is no user authentication.** Brody is a single-tenant tool. Anyone who can reach the port can read every project and can submit a GitHub token. Run it locally or behind an authenticating reverse proxy, not on the open internet.
+**There is no user authentication.** Brody is a single-tenant tool: anyone who can reach the port can read every project. Run it locally or behind an authenticating reverse proxy, not on the open internet.
+
+## Testing and validation
+
+```bash
+npm run validate    # everything below with zero warnings allowed, plus both production builds and the performance budgets
+npm test            # 379 unit and integration tests, including formal verification against the real Lean kernel
+npm run test:e2e    # Playwright: the full workflow and downloads, 4 widths x 5 brightness levels, axe accessibility, keyboard, performance budgets
+npm run benchmark -- --budget 200 1000   # pipeline speed and memory, failing if a budget is exceeded
+npm run verify:ai   # live check of your AI provider on the sample repository (billable: about $3 with gpt-5)
+npm run screenshots -- --url http://brody:3003 --shop <id> --self <id>   # regenerate the images in this README
+```
+
+CI runs `npm run validate` and the browser suite on every push. The full validation of this repository (syntax, correctness, performance, styling, accessibility, live AI behaviour and cost, downloads, Docker) is in [`docs/validation/VALIDATION_REPORT.pdf`](docs/validation/VALIDATION_REPORT.pdf), with Brody's analysis of its own code in [`docs/validation/self-analysis/`](docs/validation/self-analysis). Headline numbers: 3,000 source files analyse in about 6 seconds; every page loads in under 60 ms with 159 to 232 KB of JavaScript; no serious or critical accessibility violations at any brightness level; a live `gpt-5` analysis of the sample repository costs about $3.30.
 
 ## Project layout
 
 ```
-src/lib/ingest      upload/ZIP/GitHub ingestion, classification, secrets, credentials
-src/lib/parse       tree-sitter extractors and text fallbacks
-src/lib/graph       import resolution, symbol/call/data-access graph, importance
+src/lib/ingest      upload, ZIP and GitHub ingestion, classification, secrets, credentials
+src/lib/parse       tree-sitter extractors, text fallbacks, parse worker threads
+src/lib/graph       import resolution, symbol, call and data-access graph, importance
 src/lib/discover    architecture: routes, models, services, env, tests, areas, flows
 src/lib/analysis    pattern rules, analyzer adapters, structural checks
 src/lib/review      AI review passes, verification, patch validation, dedupe
-src/lib/formal      Lean 4 formal verification: target choice, models, proof repair, audit, source policy
+src/lib/formal      Lean 4 formal verification: targets, models, proof repair, audit, source policy
+src/lib/ai          provider abstraction (Anthropic, OpenAI-compatible), prompts, usage and pricing
 src/lib/docs        hierarchical documentation, conflict detection, caches
 src/lib/retrieval   BM25 + graph + importance (+ optional embeddings) retrieval
-src/lib/map         tree, graphs, change impact, diagrams, shared legend
+src/lib/map         tree, graphs, change impact, diagrams, legend
 src/lib/ask         repository Q&A
-src/lib/export      Markdown / HTML / JSON
+src/lib/export      Markdown, HTML, PDF, Word, JSON
+src/lib/deck        the executive deck (HTML, PowerPoint, PDF)
 src/lib/jobs        persisted job pipeline, worker, cancellation, recovery
-src/lib/ai          provider abstraction (Anthropic, OpenAI-compatible), prompts
 src/app             Next.js UI and API routes
 fixtures/sample-shop  the demonstration repository
-drizzle/            SQL migrations
 ```
-
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for design decisions and extension points.
-
-## Testing
-
-```bash
-npm run validate    # everything below, with zero warnings allowed, plus both production builds and the performance budgets
-npm test            # 379 unit and integration tests (ingestion, security, parsing, graph, review, formal verification against the real Lean kernel, AI usage and cost, docs, API, exports, precision, providers, theme contrast, scale, bundles)
-npm run typecheck
-npm run lint
-npm run benchmark -- --budget 200 1000   # pipeline speed and memory, failing if a budget is exceeded
-npm run test:e2e    # builds, then Playwright: full workflow and downloads, 4 widths x 5 brightness levels, axe accessibility, keyboard, usage gauge, Formal Proofs, performance budgets
-                    # (uses installed Google Chrome; set PW_CHANNEL= to use bundled Chromium)
-npm run verify:ai   # live check of your AI provider on the sample repository (billable: about $3 with gpt-5)
-```
-
-The integration tests analyse `fixtures/sample-shop` end to end (no fixture-specific logic exists in the product) and assert that files, symbols, dependencies, architecture, an API route, a data flow, tests and review findings are discovered. AI behaviour is tested with a scripted provider that returns grounded, fabricated and malformed responses.
-
-## Validation
-
-A full validation of this repository (syntax, correctness, performance, styling, accessibility, live AI behaviour and cost, downloads, Docker) is in [`docs/validation/VALIDATION_REPORT.pdf`](docs/validation/VALIDATION_REPORT.pdf) (also `.docx` and `.md`). It includes Brody's analysis of its own code in [`docs/validation/self-analysis/`](docs/validation/self-analysis). Headline numbers (2026-09-23): 3,000 source files analyse in about 6 seconds (about 2 GB with four parse workers, which are sized to the memory available); every page loads in under 60 ms with 159 to 232 KB of JavaScript; axe finds no serious or critical accessibility violations at any of the five brightness levels; a live `gpt-5` analysis of the sample repository costs about $3.30, shown live by the usage gauge.
 
 ## Known limitations
 
-* **Live AI calls were not verified against the real provider in development.** The supplied Anthropic key was rejected with *"not scoped to a workspace"*, so the Anthropic request path is verified only against a faked SDK client, and the OpenAI-compatible path only against a mock HTTP server. The live Anthropic model list request did reach the real API and returned that same workspace error, which the AI settings panel reports with the fix; the success path of model listing is verified against fakes only. No OpenAI key was available, so nothing was run against api.openai.com. Set `ANTHROPIC_WORKSPACE_ID` (or use a workspace-scoped key) and run `npm run verify:ai` to check your provider.
-* Formal verification proves facts about a **model** of the code. Lean guarantees the proofs; whether the model matches the source is judged by an AI audit, so every result lists its modelling assumptions and a proof the audit disputes is never used. Floating-point arithmetic, string processing and IO-heavy code are not modelled (IO results become inputs). A property Lean could not prove is reported as *unproven*, which says nothing about whether it holds. The Lean integration was tested against the real Lean 4.34 kernel with a scripted AI provider; live model quality depends on the provider.
-* Private-repository import is verified with a mocked GitHub API (token header, error handling); public import was run live.
-* Call and data-flow graphs come from static, name-based resolution. Dynamic dispatch, reflection, dependency injection containers and runtime-registered routes are not visible; edges carry confidence scores and the UI says when nothing is known.
-* Languages without a tree-sitter grammar here (Kotlin, Swift, Scala, C/C++, Dart, …) use text inspection: symbols and imports are approximate.
-* Route and model detection cover Express-style, Fastify, Hono, NestJS, tRPC, Next.js, SvelteKit, Flask, FastAPI, Django/DRF, Go routers, Spring, ASP.NET, Rails, Laravel/Symfony, Actix/Axum/Rocket and the ORMs listed in `src/lib/discover/catalog.ts`. Others appear as ordinary symbols.
-* Storage is SQLite with in-process retrieval and optional JSON-stored embeddings, chosen for a one-command install. It suits repositories up to tens of thousands of files; a Postgres/pgvector backend would be the next step for multi-tenant use.
-* The UI was exercised in desktop Chrome; it has semantic markup and labels but has not had a formal accessibility audit.
+* **Formal verification proves facts about a model of the code.** Lean guarantees the proofs; whether the model matches the source is judged by an AI audit, so every result lists its modelling assumptions and a proof the audit disputes is never used. Floating-point arithmetic, string processing and IO-heavy code are not modelled. A property Lean could not prove is *unproven*, which says nothing about whether it holds.
+* **AI cost.** With a reasoning model such as `gpt-5`, a small project costs a few dollars, about 60% of it formal verification. The usage gauge shows it live; `FORMAL_MAX_TARGETS` or `FORMAL_VERIFICATION=off` bound it.
+* The live AI path is verified with OpenAI `gpt-5`; the Anthropic path is verified against test doubles.
+* Call and data-flow graphs come from static, name-based resolution. Dynamic dispatch, reflection, dependency injection and runtime-registered routes are not visible; edges carry confidence scores.
+* Languages without a tree-sitter grammar here (Kotlin, Swift, Scala, C/C++, Dart, …) use text inspection, so their symbols and imports are approximate.
+* Route and model detection covers the frameworks and ORMs listed in `src/lib/discover/catalog.ts`; others appear as ordinary symbols.
+* Storage is SQLite with in-process retrieval, chosen for a one-command install; it suits repositories up to tens of thousands of files.
+* The interface is verified in Chrome only.

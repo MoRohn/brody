@@ -11,7 +11,7 @@ import type { ExecutiveBrief, Statement } from "@/lib/docs/types";
 interface Overview {
   ready: boolean;
   ai: { available: boolean; provider: string; model: string; reason?: string };
-  aiProblem: { summary: string; hint: string; failures: number; first: string } | null;
+  aiProblem: { summary: string; hint: string; failures: number; succeeded?: number; partial?: boolean; first: string } | null;
   executiveSummary: Statement[]; brief: ExecutiveBrief | null;
   atAGlance: { area: string; description: string }[];
   architecture: Pick<Architecture, "pattern" | "applicationType" | "stack" | "stats" | "layers" | "entryPoints"> & { externalServices: { name: string; category: string; purpose: string }[] } | null;
@@ -45,11 +45,15 @@ export default function OverviewPage() {
         </div>
         <Link href={`/p/${id}/reports`} className="ml-auto text-sm">All reports →</Link>
       </div>
-      {data.aiProblem && (
+      {data.aiProblem && (data.aiProblem.partial ? (
+        <div className="card mb-4 px-3 py-2 text-sm" style={{ borderColor: "var(--med)" }}>
+          <strong>{data.aiProblem.failures} of {data.aiProblem.failures + (data.aiProblem.succeeded ?? 0)} AI requests did not complete.</strong> <span className="text-muted">The rest of the analysis used AI as normal; the parts those requests covered fell back to deterministic results or were skipped. First failure: {data.aiProblem.first}</span>
+        </div>
+      ) : (
         <div role="alert" className="card mb-4 px-3 py-2 text-sm" style={{ borderColor: "var(--high)" }}>
           <strong>AI analysis did not complete.</strong> {data.aiProblem.summary} {data.aiProblem.hint} <span className="text-muted">({data.aiProblem.failures} failed request{data.aiProblem.failures === 1 ? "" : "s"}.) Everything shown is deterministic; after fixing the cause, use Re-analyze.</span>
         </div>
-      )}
+      ))}
       {!data.ai.available && (
         <div className="card mb-4 px-3 py-2 text-sm" style={{ borderColor: "var(--med)" }}>
           <strong>This report is fully deterministic.</strong> {data.ai.reason} Findings below come from static analyzers and structural checks only, and explanations are assembled from the repository graph rather than written by a model.

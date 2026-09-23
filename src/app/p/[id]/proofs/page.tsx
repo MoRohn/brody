@@ -70,7 +70,9 @@ export default function ProofsPage() {
   const { data, error, loading, reload } = useApi<{ formal: FormalReport | null }>(`/api/projects/${id}/formal`);
   const [show, setShow] = useState<"all" | "findings">("all");
   const f = data?.formal;
-  const targets = useMemo(() => (f?.targets ?? []).filter((t) => show === "all" || t.properties.some((p) => ["defect", "confirms-claim", "refutes-claim"].includes(p.outcome))), [f, show]);
+  // What changed the review first, then proven guarantees, then everything that proved nothing, and failures last.
+  const rank = (t: FormalTarget) => (t.status !== "checked" ? 9 : Math.min(8, ...t.properties.map((p) => ORDER.indexOf(p.outcome))));
+  const targets = useMemo(() => (f?.targets ?? []).filter((t) => show === "all" || t.properties.some((p) => ["defect", "confirms-claim", "refutes-claim"].includes(p.outcome))).sort((a, b) => rank(a) - rank(b)), [f, show]);
   if (loading && !data) return <Loading label="Loading formal verification" />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
 

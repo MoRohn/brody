@@ -17,6 +17,7 @@
     "db:generate": "drizzle-kit generate",
     "benchmark": "tsx scripts/benchmark.mts",
     "validate": "bash scripts/validate.sh",
+    "screenshots": "tsx scripts/screenshots.mts",
     "convert": "tsx scripts/convert.mts",
     "brody": "bash scripts/brody.sh"
   },
