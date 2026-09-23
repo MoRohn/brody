@@ -24,7 +24,7 @@ function Property({ id, t, p }: { id: string; t: FormalTarget; p: FormalProperty
       <div className="flex flex-wrap items-center gap-2">
         <Chip tone={o.tone} title={o.help}>{o.label}</Chip>
         <span className="mono text-xs text-muted">{p.theorem}</span>
-        {p.claimIndex !== null && t.claims[p.claimIndex] && <Chip title={t.claims[p.claimIndex].claim}>settles claim: {t.claims[p.claimIndex].title.slice(0, 60)}</Chip>}
+        {p.claimIndex !== null && t.claims[p.claimIndex] && <Chip wrap title={t.claims[p.claimIndex].claim}>settles claim: {t.claims[p.claimIndex].title.slice(0, 60)}</Chip>}
         {p.findingCode && <Link className="text-xs" href={`/p/${id}/review?q=${encodeURIComponent(p.findingCode)}`}>Finding {p.findingCode} →</Link>}
       </div>
       <p className="mt-1">{p.claim}</p>
@@ -47,7 +47,7 @@ function Target({ id, t }: { id: string; t: FormalTarget }) {
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="mono text-[15px] font-bold">{t.symbol}</h2>
         <span className="text-xs text-muted">{t.kind} · {t.language} · complexity {t.complexity}</span>
-        {t.status === "checked" ? (t.modelFaithful === false ? <Chip tone="warn" title={t.divergences.join("\n")}>model diverges from the source</Chip> : t.modelFaithful ? <Chip tone="ok">model audited as faithful</Chip> : null) : <Chip>{t.status === "not-modelable" ? "not modelable" : "not checked"}</Chip>}
+        {t.status === "checked" ? (t.modelFaithful === false ? <Chip wrap tone="warn" title={t.divergences.join("\n")}>model diverges from the source</Chip> : t.modelFaithful ? <Chip tone="ok">model audited as faithful</Chip> : null) : <Chip>{t.status === "not-modelable" ? "not modelable" : "not checked"}</Chip>}
         {t.cached && <Chip tone="info" title="The function is unchanged since the last analysis, so its proofs were reused">reused</Chip>}
       </div>
       <div className="mt-0.5 text-sm"><SourceLink projectId={id} cite={`${t.filePath}:${t.startLine}-${t.endLine}`} /> <span className="text-xs text-muted">· chosen for: {t.reasons.join(", ")}</span></div>

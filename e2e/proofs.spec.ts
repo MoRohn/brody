@@ -8,7 +8,7 @@ import path from "node:path";
  * its empty state). Layout, contrast and accessibility at every width and brightness level.
  */
 const SHOTS = process.env.SCREENSHOT_DIR;
-const VIEWPORTS = [{ name: "desktop", width: 1440, height: 900 }, { name: "tablet", width: 820, height: 1100 }, { name: "phone", width: 390, height: 844 }];
+const VIEWPORTS = [{ name: "desktop", width: 1440, height: 900 }, { name: "tablet", width: 820, height: 1100 }, { name: "phone", width: 390, height: 844 }, { name: "small-phone", width: 360, height: 740 }];
 const LEVELS = ["bright", "original", "default", "dark", "darkest"] as const;
 
 const model = `def applyDiscount (priceCents percent : Int) : Int :=\n  if percent > 100 then 0 else priceCents - Int.fdiv (priceCents * percent) 100`;
@@ -72,7 +72,11 @@ test("the Formal Proofs page reads cleanly and passes accessibility at every wid
     // Open the Lean source so its layout is checked too.
     await page.getByText("Complete Lean file checked").first().click();
     const over = await page.evaluate(() => { const el = document.scrollingElement!; const main = document.querySelector("main")!; return { doc: el.scrollWidth - el.clientWidth, main: main.scrollWidth - main.clientWidth }; });
-    if (over.doc > 2 || over.main > 2) problems.push(`${vp.name}/${level}: horizontal overflow ${JSON.stringify(over)}`);
+    if (over.doc > 2 || over.main > 2) {
+      // Name the elements that stick out, so a failure says what to fix.
+      const wide = await page.evaluate(() => { const edge = document.querySelector("main")!.getBoundingClientRect().right; return [...document.querySelectorAll("main *")].filter((e) => e.getBoundingClientRect().right > edge + 1 && !e.closest("pre")).slice(0, 4).map((e) => `${e.tagName.toLowerCase()}.${(e as HTMLElement).className.toString().split(" ").slice(0, 2).join(".")} "${(e.textContent ?? "").slice(0, 40)}"`); });
+      problems.push(`${vp.name}/${level}: horizontal overflow ${JSON.stringify(over)} from ${wide.join(", ")}`);
+    }
     if (vp.name === "desktop" || level === "default" || level === "darkest") {
       const res = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
       for (const v of res.violations.filter((x) => x.impact === "serious" || x.impact === "critical")) problems.push(`${vp.name}/${level}: ${v.id} (${v.impact}) ${v.nodes[0].target.join(" ")}`);

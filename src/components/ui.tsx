@@ -20,9 +20,10 @@ export function SeverityBadge({ severity }: { severity: string }) {
   );
 }
 
-export function Chip({ children, tone = "neutral", title }: { children: ReactNode; tone?: "neutral" | "ok" | "warn" | "info" | "danger"; title?: string }) {
+/** A short label. `wrap` lets a chip that carries free text (a claim, a path) wrap instead of running past a narrow screen. */
+export function Chip({ children, tone = "neutral", title, wrap = false }: { children: ReactNode; tone?: "neutral" | "ok" | "warn" | "info" | "danger"; title?: string; wrap?: boolean }) {
   const color = tone === "ok" ? "var(--ok)" : tone === "warn" ? "var(--med)" : tone === "danger" ? "var(--crit)" : tone === "info" ? "var(--link)" : "var(--muted)";
-  return <span title={title} className="chip" style={{ color, background: `color-mix(in srgb, ${color} 10%, var(--panel))` }}>{children}</span>;
+  return <span title={title} className={wrap ? "chip chip-wrap" : "chip"} style={{ color, background: `color-mix(in srgb, ${color} 10%, var(--panel))` }}>{children}</span>;
 }
 
 export function OriginBadge({ origin, verification }: { origin: string; verification?: string }) {

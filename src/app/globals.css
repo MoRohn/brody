@@ -219,6 +219,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .tab:hover { background: var(--panel2); color: var(--deep); }
 .tab[aria-selected="true"], .tab[aria-pressed="true"] { background: var(--fill); color: var(--on-fill); }
 .chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid currentColor; border-radius: 9999px; padding: 1px 9px; font-size: 11.5px; font-weight: 600; line-height: 1.5; white-space: nowrap; }
+.chip-wrap { max-width: 100%; white-space: normal; border-radius: 10px; }
 /* Accordion header: a full-width button that reads as a row, with an icon tile, title, hint and chevron. */
 .accordion-head { display: flex; width: 100%; align-items: center; gap: 14px; padding: 14px 20px; text-align: left; cursor: pointer; transition: background-color .15s; }
 .accordion-head:hover { background: var(--panel2); }

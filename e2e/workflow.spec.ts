@@ -120,9 +120,16 @@ test("import → analyze → review → explain → map → explore → ask → 
   expect(mdFile.bytes.toString()).toContain("## 18. Detailed Code Map");
   await page.getByTestId("download-menu-full").click();
   await expect(page.getByRole("menu", { name: /Repository Intelligence Report downloads/ })).toBeVisible();
-  const [popup] = await Promise.all([page.waitForEvent("popup"), page.getByTestId("view-pdf-full").last().click()]);
-  await popup.waitForLoadState();
-  expect(popup.url()).toContain("format=pdf");
+  // "View" opens the PDF in a new tab. Chrome shows it, but headless Chromium downloads it instead and the tab never
+  // finishes loading, so check what the tab requested and what the server sent rather than waiting for a page load.
+  const [popup, pdfResponse] = await Promise.all([
+    page.waitForEvent("popup"),
+    page.context().waitForEvent("response", (r) => r.url().includes("format=pdf") && r.url().includes("download=0")),
+    page.getByTestId("view-pdf-full").last().click(),
+  ]);
+  expect(pdfResponse.status()).toBe(200);
+  expect(pdfResponse.headers()["content-type"]).toContain("application/pdf");
+  expect(pdfResponse.headers()["content-disposition"] ?? "").toMatch(/^inline/);
   await popup.close();
   await page.keyboard.press("Escape");
   await page.getByRole("link", { name: /^Reports$/ }).click();
