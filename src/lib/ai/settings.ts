@@ -35,6 +35,7 @@ export const settingsPatchSchema = z.object({
 });
 export type AISettingsPatch = z.infer<typeof settingsPatchSchema>;
 
+/** The saved selection is runtime data, so its reads and writes are marked for the bundler not to trace the project through them. */
 function settingsPath(): string | null {
   if (process.env.AI_SETTINGS_PATH) return process.env.AI_SETTINGS_PATH;
   if (config.databasePath === ":memory:") return null;
@@ -48,9 +49,9 @@ export function readSettings(): AISettings {
   const file = settingsPath();
   if (!file) return memory;
   try {
-    const st = fs.statSync(file);
+    const st = fs.statSync(/*turbopackIgnore: true*/ file); // brody-ignore: sync-io (a tiny file, re-read only when its mtime changes)
     if (cache && cache.file === file && cache.mtimeMs === st.mtimeMs) return cache.value;
-    const parsed = settingsSchema.safeParse(JSON.parse(fs.readFileSync(file, "utf8")));
+    const parsed = settingsSchema.safeParse(JSON.parse(fs.readFileSync(/*turbopackIgnore: true*/ file, "utf8"))); // brody-ignore: sync-io
     const value = parsed.success ? parsed.data : {};
     cache = { file, mtimeMs: st.mtimeMs, value };
     return value;
@@ -84,10 +85,11 @@ export function updateSettings(patch: AISettingsPatch): AISettings {
     memory = next;
     return next;
   }
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.mkdirSync(/*turbopackIgnore: true*/ path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(next, null, 2), { mode: 0o600 });
-  fs.renameSync(tmp, file);
+  // brody-ignore: sync-io (an atomic write of a few hundred bytes when the user saves settings)
+  fs.writeFileSync(/*turbopackIgnore: true*/ tmp, JSON.stringify(next, null, 2), { mode: 0o600 });
+  fs.renameSync(/*turbopackIgnore: true*/ tmp, file);
   cache = undefined;
   return next;
 }

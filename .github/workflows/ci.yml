@@ -14,11 +14,13 @@ jobs:
           node-version: 24
           cache: npm
       - run: pip install ruff
+      - name: Lean 4 (formal verification tests run against the real checker)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --no-modify-path --default-toolchain leanprover/lean4:v4.34.0
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm test
-      - run: npm run build
+      # Types, lint (zero warnings), tests, both production builds (zero warnings) and the performance budgets.
+      - run: npm run validate -- --quick
       - name: End-to-end (bundled Chromium)
         run: |
           npx playwright install --with-deps chromium

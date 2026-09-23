@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { openDatabase, closeDatabase, getDb, schema } from "@/lib/db/client";
-import { setAIProvider } from "@/lib/ai";
+import { recordUsage, setAIProvider } from "@/lib/ai";
 import type { AIProvider, AnalysisRequest, AnalysisResult } from "@/lib/ai";
 import { normalizeFiles } from "@/lib/ingest/normalize";
 import { createProject } from "@/lib/ingest/store";
@@ -48,16 +48,23 @@ export interface RecordedCall { task: string; system: string; prompt: string }
 
 /** Scripted provider: returns data derived from the real prompt so evidence points at real lines. */
 export class MockProvider implements AIProvider {
-  readonly name = "mock";
-  readonly model = "mock-model";
+  readonly name: string;
+  readonly model: string;
   calls: RecordedCall[] = [];
-  constructor(private script: (req: AnalysisRequest<unknown>) => unknown | undefined | Promise<unknown | undefined>) {}
+  /** `as` lets a test pose as a real provider and model so usage is priced; by default it is an unpriced "mock". */
+  constructor(private script: (req: AnalysisRequest<unknown>) => unknown | undefined | Promise<unknown | undefined>, as: { provider?: string; model?: string } = {}) {
+    this.name = as.provider ?? "mock";
+    this.model = as.model ?? "mock-model";
+  }
   async analyze<T>(request: AnalysisRequest<T>): Promise<AnalysisResult<T>> {
     this.calls.push({ task: request.task, system: request.system, prompt: request.prompt });
     const raw = await this.script(request as AnalysisRequest<unknown>);
+    // Like the real providers, report what the call would be billed for (1 token per 4 prompt characters, 100 out).
+    const usage = { inputTokens: Math.ceil(request.prompt.length / 4), outputTokens: 100, calls: 1 };
+    recordUsage({ provider: this.name, model: this.model, task: request.task, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens });
     if (raw === undefined) throw new Error(`mock has no script for ${request.task}`);
     const parsed = request.schema.parse(raw);
-    return { data: parsed, model: this.model, provider: this.name, usage: { inputTokens: request.prompt.length / 4, outputTokens: 100, calls: 1 } };
+    return { data: parsed, model: this.model, provider: this.name, usage };
   }
 }
 

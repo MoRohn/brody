@@ -28,7 +28,7 @@ function Facet({ title, name, values, selected, onToggle }: { title: string; nam
       {entries.map(([v, n]) => (
         <label key={v} className="flex cursor-pointer items-center gap-2 py-0.5 text-[13px]">
           <input type="checkbox" checked={selected.includes(v)} onChange={() => onToggle(name, v)} />
-          <span className="min-w-0 flex-1 truncate">{name === "origin" ? (v === "static" ? "Static analyzer" : "AI-inferred") : name === "verification" ? (v === "verified" ? "Verified" : "Needs verification") : v}</span>
+          <span className="min-w-0 flex-1 truncate">{name === "origin" ? (v === "static" ? "Static analyzer" : v === "formal" ? "Proved (Lean 4)" : "AI-inferred") : name === "verification" ? (v === "verified" ? "Verified" : "Needs verification") : v}</span>
           <span className="tabular-nums text-muted">{n}</span>
         </label>
       ))}
@@ -112,7 +112,8 @@ export default function ReviewPage() {
             <div className="flex flex-wrap items-center gap-2"><span className="mono text-sm text-muted">{selected.code}</span><SeverityBadge severity={selected.severity} /><Chip title="How confident the finding is">Confidence: {selected.confidence}</Chip><Chip>{selected.category}</Chip><OriginBadge origin={selected.origin} verification={selected.verification} /></div>
             <h1 className="mt-2 font-serif text-xl font-bold">{selected.title}</h1>
             {selected.filePath && <div className="mt-1 text-sm"><SourceLink projectId={id} cite={`${selected.filePath}${selected.startLine ? `:${selected.startLine}${selected.endLine && selected.endLine !== selected.startLine ? `-${selected.endLine}` : ""}` : ""}`} /> {selected.area && <span className="text-muted">· {selected.area}</span>} · <Link href={`/p/${id}/map?impactFile=${encodeURIComponent(selected.filePath)}`}>Change impact</Link></div>}
-            {selected.analyzer && <div className="mt-1 text-xs text-muted">Produced by <span className="mono">{selected.analyzer}</span>{selected.origin === "static" ? " (deterministic analysis)" : " (AI judgement, checked against the source)"}</div>}
+            {selected.analyzer && <div className="mt-1 text-xs text-muted">Produced by <span className="mono">{selected.analyzer}</span>{selected.origin === "static" ? " (deterministic analysis)" : selected.origin === "formal" ? " (machine-checked proof)" : " (AI judgement, checked against the source)"}</div>}
+            {(selected.origin === "formal" || /formal proof/.test(selected.verificationNote ?? "")) && <div className="mt-1 text-xs"><Link href={`/p/${id}/proofs`}>See the Lean model and proof →</Link></div>}
             {selected.evidence && <><div className="h-label mb-1 mt-4">Evidence</div><pre tabIndex={0}>{selected.evidence}</pre></>}
             <div className="h-label mb-1 mt-4">What happens</div><p>{selected.whatHappens}</p>
             <div className="h-label mb-1 mt-3">Why it matters</div><p>{selected.whyItMatters}</p>

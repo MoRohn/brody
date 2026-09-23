@@ -16,7 +16,7 @@ One Next.js process serves the UI and JSON API and hosts an in-process job worke
 
 Choices made to keep the system simple: SQLite instead of Postgres + Redis (one file, no services), tree-sitter WASM instead of native bindings (no compilers at install time), React Flow + dagre for interactive graphs, Mermaid only for exportable diagrams.
 
-## Job pipeline (13 persisted stages)
+## Job pipeline (14 persisted stages)
 
 1. Importing repository (GitHub download happens here so progress and failures persist)
 2. Enumerating files (classification counts, incremental diff)
@@ -26,11 +26,12 @@ Choices made to keep the system simple: SQLite instead of Postgres + Redis (one 
 6. Detecting architecture
 7. Running static analysis
 8. Reviewing code (AI passes)
-9. Verifying findings
-10. Generating documentation
-11. Building code map artifacts
-12. Building executive deck (a business-level view of the same analysis; failure here only warns, the deck is then built on first request)
-13. Finalizing report
+9. Formally verifying complex code (Lean 4; skipped with the reason when there is no AI provider or no Lean toolchain)
+10. Verifying findings
+11. Generating documentation
+12. Building code map artifacts
+13. Building executive deck (a business-level view of the same analysis; failure here only warns, the deck is then built on first request)
+14. Finalizing report
 
 Stage status is `done`, `skipped` (with the reason), `warning` (completed but not as intended, e.g. every AI request failed) or `failed`. Cancellation is checked between units of work.
 
@@ -38,13 +39,27 @@ Stage status is `done`, `skipped` (with the reason), `warning` (completed but no
 
 `projects`, `files` (path, language, hash, classification, role, area, parse status), `symbols` (kind, qualified name, line range, signature, docs, importance, metadata), `relationships` (IMPORTS, CALLS, INSTANTIATES, EXTENDS, IMPLEMENTS, USES, READS_FROM, WRITES_TO, ROUTES_TO, EMITS, SUBSCRIBES_TO, TESTS, DEPENDS_ON with confidence), `findings`, `jobs`, `index_entries`, `questions`, `blobs` (content-addressed file bodies), `credentials` (encrypted), and two caches: `parse_cache` (content hash → parse) and `explain_cache` (file hash + dependency hashes → explanation).
 
+## AI usage and cost
+
+Providers call `recordUsage` after every billable response (analysis calls, their retries and embeddings) with the model that actually answered (`msg.model`; a server-side fallback can differ from the requested model) and the provider's own token counts, including Anthropic cache reads and writes and OpenAI cached prompt tokens. The record goes to the `UsageLedger` of the current run, found through `AsyncLocalStorage` (`withUsageLedger` wraps `processJob`), so nothing is threaded through call sites and calls outside a run (health checks, other requests) are never attributed to it. The ledger aggregates by model and by pipeline step (from the task prefix) and prices each model with `priceFor` (`ai/pricing.ts`: `AI_PRICING`, then dated Anthropic and OpenAI list prices; an OpenAI-compatible endpoint other than api.openai.com is never priced as OpenAI). The job saves a snapshot on its `summary` at most once a second while it runs (`live: true`), and the final snapshot as `summary.aiUsage` when it succeeds, fails or is cancelled. `components/usage.tsx` renders it as the header gauge and popover and on the progress screen. When list prices change, update the tables and `PRICES_AS_OF`.
+
 ## Retrieval
 
 `search()` scores BM25 over identifier/path terms, adds a graph-neighbour bonus for the strongest symbol hits, an importance prior (PageRank over the graph, entry points, endpoints, models) and, when an embedding model is configured, cosine similarity. `retrieveContext()` turns hits into excerpts with real line ranges for prompts. Raw-code scanning is available as another signal.
 
 ## Review verification
 
-`verifyDeterministic` (source of truth) rejects candidates that cite unknown files, re-anchors line numbers to where the quoted evidence occurs, rejects high-severity findings whose quote is fabricated, downgrades findings in tests, adds caller/reachability notes, and validates suggested unified diffs by applying them to the file. `verifyWithAI` then asks a sceptical pass to confirm, reject or mark *needs verification* with the surrounding code and known callers. Deduplication merges restatements of the same problem but never collapses different problems on adjacent lines.
+`verifyDeterministic` (source of truth) rejects candidates that cite unknown files, re-anchors line numbers to where the quoted evidence occurs, rejects high-severity findings whose quote is fabricated, downgrades findings in tests, adds caller/reachability notes, and validates suggested unified diffs by applying them to the file. `verifyWithAI` then asks a sceptical pass to confirm, reject or mark *needs verification* with the surrounding code and known callers. Deduplication merges restatements of the same problem but never collapses different problems on adjacent lines; it keeps static findings over proofs, and proofs over AI judgement.
+
+## Formal verification (`src/lib/formal`)
+
+Runs between the AI review and the AI verifier, on the candidates that survived `verifyDeterministic`.
+
+* **Targets** (`targets.ts`): functions of 3 to 200 lines in source files, ranked by open AI claims (routed to the smallest enclosing function; Correctness, Reliability, Data and Security), cyclomatic complexity (`meta.complexity`), arithmetic and comparison density, risky names and importance. Each target carries up to three called helpers and the project's test lines that name it. Depth grows with complexity: property count (2-3, 3-5, 4-6) and repair rounds (`1 + complexity/10`, one more with claims, capped by `FORMAL_MAX_REPAIR_ROUNDS`).
+* **Model and repair** (`index.ts`): the model writes a pure Lean model and theorems (`FormalPlanSchema`) under rules that pin down language semantics that decide fidelity (division rounding per language, division by zero, fixed-width overflow as `BitVec`, IO results as inputs, no `Float`). Each property is a guarantee (`holds`) or an explicit-witness counterexample (`violated`), and every routed claim must be settled by exactly one. Lean's diagnostics go back verbatim; the round with the most proved theorems is kept as one consistent whole.
+* **Checker** (`lean.ts`): `screenLeanSource` refuses code-executing and proof-faking constructs by scanning the raw text, so there is no lexer to disagree with Lean's. `checkLean` assembles the file, runs the toolchain binary with `--json`, `-M` and `maxHeartbeats` under a wall-clock kill, attributes errors to theorems by line, and reads `#print axioms` only from Brody's own trailing lines. Proved means no error in the theorem or the model, and axioms within `propext`, `Classical.choice`, `Quot.sound`.
+* **Audit and outcome** (`decideOutcome`): a sceptical pass checks model fidelity, statement/claim agreement, realistic hypotheses, and hand-executes every counterexample on the source. Only a faithful, matching, reproduced result changes the review: `defect` (new `origin: "formal"`, `analyzer: "lean4"` finding), `confirms-claim` (verified, skips the AI verifier), `refutes-claim` (rejected), `guarantee` (reported). Anything else is `disputed` or `unproven` and stays in the report only.
+* **Storage:** the report (`FormalReport`, with the checked Lean file per target) is `analysis.formal`, served by `GET /api/projects/:id/formal` and shown on the Formal Proofs page; `findingCode` links proofs and findings. Results are cached in `explain_cache` (kind `formal`) keyed by the function, helper, test and claim text plus the Lean version and model; bump `FORMAL_VERSION` when prompts or rules change.
 
 ## Documentation synthesis
 
@@ -54,6 +69,7 @@ Stage status is `done`, `skipped` (with the reason), `warning` (completed but no
 
 * **New language:** add a grammar to `src/lib/parse/treesitter.ts`, an extractor in `extract.ts`, an import resolver case in `graph/resolve.ts`, and extension mapping in `ingest/languages.ts`.
 * **New framework or route style:** add detection in `discover/detect.ts` (routes/models/entry points) and signatures in `discover/catalog.ts`.
+* **Formal verification:** to trust a new tactic or library, check `#print axioms` on a proof that uses it; add an import to `OPTIONAL_IMPORTS` in `formal/lean.ts` only if it needs no axiom beyond the standard three and adds no way to run code. Never relax `FORBIDDEN` without a test in `tests/formal.test.ts` showing the construct cannot execute code or fake a proof.
 * **New static rule:** append to `analysis/rules.ts` (with a test). New analyzer: add an adapter in `analysis/analyzers.ts` that never executes repository code.
 * **Explanation levels:** documentation is built bottom-up in `src/lib/docs`: symbols, then files, then **collections of files** (folders in `modules.ts`, functional areas in `deterministic.ts`), then the system synthesis. Each level has its own model (`SymbolDoc`, `FileDoc`, `ModuleDoc`/`AreaDoc`, `DocReport`), its own prompt with an explicit scale instruction (a file prompt may not describe the wider system; a collection prompt may not restate files one by one), and its own tab on the Explain page. The folder level is derived from the import graph, so it exists without an AI provider; `narrateModule` in `ai.ts` then rewrites its narrative from the file summaries. `GET/POST /api/projects/:id/explain` serves any folder or hand-picked group on demand, including projects analysed before this level existed.
 * **Executive brief:** `DocReport.brief` (`ExecutiveBrief`) is the business-readable Executive Summary. `docs/brief.ts` builds it deterministically from the analysis (so it exists without AI and supplies every number); a second, sequential AI step (`narrateBrief` in `docs/ai.ts`, after the technical synthesis) rewrites the words from the in-depth statements, which stay in `executiveSummary` and are shown as "Summary evidence". The main report is concise (`buildMarkdown` detail mode); the `complete` scope keeps full detail. In the PDF the brief is drawn as landscape slides (`drawBriefSlides` in `export/pdf.ts`) and its text version is omitted from the body.

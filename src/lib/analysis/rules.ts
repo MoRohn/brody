@@ -11,6 +11,8 @@ export interface Rule {
   pattern: RegExp;
   /** Match against code only: string, template and regex literal contents and trailing comments are blanked first. */
   codeOnly?: boolean;
+  /** With codeOnly: a comment inside the matched source lines means the construct is deliberate (an explained empty catch). */
+  commentExcuses?: boolean;
   /** Report at most one occurrence per file (the message notes how many more there are). */
   perFile?: boolean;
   /** Skip files whose path matches (CLI scripts, tooling). */
@@ -61,7 +63,7 @@ export const RULES: Rule[] = [
     whatHappens: "The redirect destination comes directly from a request parameter.", whyItMatters: "Attackers can craft links on the trusted domain that forward victims to phishing sites.", remediation: "Validate the target against an allow-list of internal paths or hosts." },
   { id: "ssrf", title: "Outbound request URL derived from request input", category: "Security", severity: "Medium", confidence: "Low", languages: "*", pattern: /(?:fetch|axios(?:\.\w+)?|got|requests\.(?:get|post|put|head)|http\.Get|urlopen|HttpClient\.\w+Async|RestTemplate\.\w+)\s*\(\s*(?:req\.(?:query|body|params)|request\.(?:args|GET|POST|form|json)|params\[|body\[|input\.)/,
     whatHappens: "The server fetches a URL that the caller controls.", whyItMatters: "Attackers can make the server reach internal services or cloud metadata endpoints (server-side request forgery).", remediation: "Allow-list destination hosts, block private/link-local ranges and disable redirects." },
-  { id: "empty-catch", title: "Exception swallowed by an empty catch/except block", category: "Reliability", severity: "Low", confidence: "High", languages: [...JS, "Java", "C#", "PHP"], pattern: /catch\s*(?:\([^)]*\))?\s*\{\s*\}/gs,
+  { id: "empty-catch", codeOnly: true, commentExcuses: true, title: "Exception swallowed by an empty catch/except block", category: "Reliability", severity: "Low", confidence: "High", languages: [...JS, "Java", "C#", "PHP"], pattern: /catch\s*(?:\([^)]*\))?\s*\{\s*\}/gs,
     whatHappens: "An error is caught and discarded with no logging or handling.", whyItMatters: "Failures become invisible, so partial or corrupted state can persist unnoticed and debugging becomes guesswork.", remediation: "Log the error with context, handle the specific failure, or rethrow." },
   { id: "python-bare-except", codeOnly: true, title: "Bare except clause hides all errors", category: "Reliability", severity: "Low", confidence: "High", languages: ["Python"], pattern: /^\s*except\s*:\s*(?:pass\s*)?$/,
     whatHappens: "All exceptions, including KeyboardInterrupt and SystemExit, are caught without discrimination.", whyItMatters: "Programming errors and shutdown signals are masked, leaving the process in unpredictable states.", remediation: "Catch specific exception types and log them." },
@@ -77,13 +79,13 @@ export const RULES: Rule[] = [
   { id: "sync-io", skipPaths: /(^|\/)(scripts?|bin|cli|tools?|migrations?|drizzle|config|setup)(\/|\.)|\.(mts|cjs)$|\.config\.[a-z]+$/, perFile: true, title: "Blocking synchronous I/O in server code", category: "Performance", severity: "Low", confidence: "Low", languages: JS, pattern: /\b(?:readFileSync|writeFileSync|readdirSync|statSync|existsSync|execSync|spawnSync)\(/,
     suppress: (_l, ctx) => /^(?:\s*(?:\/\/|\*)|.*(?:scripts?|migrat|config|setup|build|cli|bin)\/)/.test(ctx),
     whatHappens: "A synchronous filesystem or process call runs on the event loop.", whyItMatters: "While it runs, the Node.js process cannot serve any other request, degrading latency under load.", remediation: "Use the async fs.promises / child_process equivalents in request paths." },
-  { id: "loop-await", perFile: true, codeOnly: true, title: "Sequential await inside a loop", category: "Performance", severity: "Low", confidence: "Low", languages: JS, pattern: /for\s*\([^)]*\)\s*\{[^}]*\bawait\b[^}]*(?:fetch|query|find|get|save|create|update|delete|axios|request)\w*\(/s,
+  { id: "loop-await", perFile: true, codeOnly: true, title: "Sequential await inside a loop", category: "Performance", severity: "Low", confidence: "Low", languages: JS, pattern: /for\s*\((?![^)]*\b(?:attempt|retr|tries)\w*)[^)]*\)\s*\{[^}]*\bawait\b[^}]*(?:fetch|query|find|get|save|create|update|delete|axios|request)\w*\(/s,
     whatHappens: "Iterations wait for each asynchronous call in turn.", whyItMatters: "Total time grows linearly with the number of items, and database/network calls in a loop are a classic N+1 pattern.", remediation: "Batch the operation or run independent calls with Promise.all and bounded concurrency." },
   { id: "select-star", perFile: true, title: "SELECT * returns every column", category: "Performance", severity: "Informational", confidence: "Medium", languages: "*", pattern: /select\s+\*\s+from/i,
     whatHappens: "A query selects all columns of a table.", whyItMatters: "It transfers unused data and makes the code brittle when columns are added.", remediation: "List only the required columns." },
   { id: "float-money", perFile: true, title: "Floating-point arithmetic on money-like values", category: "Correctness", severity: "Low", confidence: "Low", languages: "*", pattern: /(?:price|amount|total|balance|cost|fee|tax|salary|payment)\w*\s*[:=]\s*(?:parseFloat|Number|float|double)\(|(?:price|amount|total|balance|cost)\w*\s*\*\s*(?:0?\.\d+|1\.\d+)/i,
     whatHappens: "Monetary quantities appear to be handled as binary floating-point numbers.", whyItMatters: "Rounding error accumulates and can produce off-by-a-cent discrepancies in totals.", remediation: "Represent money as integer minor units or a decimal type." },
-  { id: "http-plain", perFile: true, title: "Plain HTTP URL used for an external call", category: "Security", severity: "Low", confidence: "Low", languages: "*", pattern: /['"`]http:\/\/(?!localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|host\.docker\.internal|[\w-]+:\d+|.*\$\{|www\.w3\.org|schemas\.|json-schema\.org|example\.)[^'"`\s]+['"`]/,
+  { id: "http-plain", perFile: true, title: "Plain HTTP URL used for an external call", category: "Security", severity: "Low", confidence: "Low", languages: "*", pattern: /['"`]http:\/\/(?!localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|host\.docker\.internal|[\w-]+:\d+|.*\$\{|\$[A-Za-z_]|www\.w3\.org|schemas\.|json-schema\.org|example\.)[^'"`\s]+['"`]/,
     whatHappens: "An unencrypted http:// endpoint is referenced.", whyItMatters: "Traffic can be read or altered in transit.", remediation: "Use https:// endpoints." },
   { id: "cookie-insecure", codeOnly: true, title: "Cookie set without Secure/HttpOnly protections", category: "Security", severity: "Medium", confidence: "Low", languages: "*", pattern: /(?:secure\s*:\s*false|httpOnly\s*:\s*false|httponly\s*=\s*False|SESSION_COOKIE_SECURE\s*=\s*False|samesite\s*[:=]\s*['"]none['"])/i,
     whatHappens: "Cookie flags that protect session cookies are explicitly disabled.", whyItMatters: "Cookies become readable by scripts or sendable over plain HTTP, increasing session theft risk.", remediation: "Enable Secure, HttpOnly and an appropriate SameSite policy." },
@@ -108,28 +110,63 @@ export const RULES: Rule[] = [
 
 /**
  * Blank the contents of string, template and regex literals and drop trailing // comments so code
- * rules only see code. Line based and deliberately simple: an unterminated template continues on the next line
- * as plain text, which errs towards fewer matches.
+ * rules only see code. Deliberately simple and line based, except that a template literal may span lines (an embedded
+ * script or HTML page): `blankLines` carries that state, so the middle lines of a template are blanked too.
  */
 export function blankLiterals(line: string): string {
+  return blankLine(line, false).out;
+}
+
+/** Blank a whole file, carrying the open-template state from line to line. */
+export function blankLines(lines: string[]): string[] {
+  let inTemplate = false;
+  return lines.map((l) => { const r = blankLine(l, inTemplate); inTemplate = r.inTemplate; return r.out; });
+}
+
+/** Skip the rest of a template literal from `i`; returns where it closed, or -1 if it runs past the end of the line. */
+function templateEnd(line: string, i: number, emit: (s: string) => void): number {
+  while (i < line.length && line[i] !== "`") {
+    if (line[i] === "\\") { i += 2; continue; }
+    // Interpolations inside template literals are code: keep them so injection patterns still match.
+    if (line[i] === "$" && line[i + 1] === "{") {
+      let depth = 0;
+      while (i < line.length) { emit(line[i]); if (line[i] === "{") depth++; else if (line[i] === "}" && --depth === 0) { i++; break; } i++; }
+      continue;
+    }
+    i++;
+  }
+  return i < line.length ? i : -1;
+}
+
+function blankLine(line: string, startInTemplate: boolean): { out: string; inTemplate: boolean } {
   let out = "";
   let i = 0;
   let prev = "";
+  if (startInTemplate) {
+    const end = templateEnd(line, 0, (s) => { out += s; });
+    if (end < 0) return { out, inTemplate: true };
+    out += "`";
+    i = end + 1;
+    prev = "`";
+  }
   while (i < line.length) {
     const c = line[i];
     if (c === "/" && line[i + 1] === "/" && !/:$/.test(prev)) break;
-    if (c === '"' || c === "'" || c === "`") {
+    if (c === "`") {
+      out += c;
+      const end = templateEnd(line, i + 1, (s) => { out += s; });
+      if (end < 0) return { out, inTemplate: true };
+      out += c;
+      i = end + 1;
+      prev = c;
+      continue;
+    }
+    if (c === '"' || c === "'") {
       const q = c;
       out += q;
       i++;
       while (i < line.length && line[i] !== q) {
         if (line[i] === "\\") { i += 2; continue; }
-        // Interpolations inside template literals are code: keep them so injection patterns still match.
-        if (q === "`" && line[i] === "$" && line[i + 1] === "{") {
-          let depth = 0;
-          while (i < line.length) { out += line[i]; if (line[i] === "{") depth++; else if (line[i] === "}" && --depth === 0) { i++; break; } i++; }
-          continue;
-        }
         i++;
       }
       out += q;
@@ -147,7 +184,7 @@ export function blankLiterals(line: string): string {
     if (c.trim()) prev = c;
     i++;
   }
-  return out;
+  return { out, inTemplate: false };
 }
 
 /** `brody-ignore` (optionally `brody-ignore: rule-id, other-id`) on the line or the line above silences a finding on purpose. */
@@ -166,8 +203,8 @@ export function scanText(path: string, language: string, text: string, isTest: b
   const lines = text.split("\n");
   if (lines.length > 20000) return out;
   // Blanking literals and classifying comment lines are per-line facts, so compute each once and share it across every rule.
-  const blankedLine: (string | undefined)[] = new Array(lines.length);
-  const codeLine = (i: number) => (blankedLine[i] ??= blankLiterals(lines[i]));
+  let blanked: string[] | undefined;
+  const codeLine = (i: number) => (blanked ??= blankLines(lines))[i];
   const commentLine: (boolean | undefined)[] = new Array(lines.length);
   const isComment = (i: number) => (commentLine[i] ??= /^(\/\/|#|\*|\/\*|<!--)/.test(lines[i].trim()));
   let blankedText: string | undefined;
@@ -181,13 +218,19 @@ export function scanText(path: string, language: string, text: string, isTest: b
       const src = rule.codeOnly ? (blankedText ??= lines.map((_, i) => codeLine(i)).join("\n")) : text;
       const re = new RegExp(rule.pattern.source, rule.pattern.flags.includes("g") ? rule.pattern.flags : rule.pattern.flags + "g");
       let m: RegExpExecArray | null;
-      while ((m = re.exec(src)) && hits < 5) {
+      while ((m = re.exec(src)) !== null) {
+        if (m[0] === "") re.lastIndex++; // an empty match would never advance
+        if (hits >= 5) break;
         const line = src.slice(0, m.index).split("\n").length;
+        const endLine = Math.min(lines.length, line + Math.max(0, m[0].split("\n").length - 1));
         if (ignored(lines, line - 1, rule.id)) continue;
-        emit(toFinding(rule, path, line, lines, Math.min(lines.length, line + Math.max(0, m[0].split("\n").length - 1))));
+        const matched = lines.slice(line - 1, endLine).join("\n");
+        if (rule.commentExcuses && /\/\/|\/\*/.test(matched.slice(Math.max(0, matched.indexOf("catch"))))) continue;
+        emit(toFinding(rule, path, line, lines, endLine));
       }
     } else {
-      for (let i = 0; i < lines.length && hits < 5; i++) {
+      for (let i = 0; i < lines.length; i++) {
+        if (hits >= 5) break;
         const raw = lines[i];
         if (raw.length > 1200) continue;
         if (rule.id !== "todo-fixme" && isComment(i)) continue;

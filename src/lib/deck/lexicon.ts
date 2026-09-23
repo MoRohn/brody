@@ -115,6 +115,7 @@ export function issueFor(f: FindingLike): Issue {
   if (f.analyzer === "brody-structure") for (const [re, t] of TITLE_TEXT) if (re.test(f.title)) return t;
   if (f.analyzer === "typescript" || f.analyzer === "python-ast" || f.analyzer === "gofmt") return R("Code that cannot be built or run", "Repair the code that fails to build");
   if (f.analyzer?.startsWith("eslint/") || f.analyzer?.startsWith("ruff/")) return R("A likely defect in the code", "Correct the likely defects");
+  if (f.analyzer === "lean4") return R("A defect proven with a concrete failing case", "Correct the defects proven by formal verification");
   for (const [re, t] of TITLE_TEXT) if (re.test(f.title)) return t;
   return CATEGORY_TEXT[f.category] ?? R("An issue worth reviewing", "Review the issue");
 }

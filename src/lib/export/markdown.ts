@@ -78,7 +78,7 @@ export function buildMarkdown(projectId: string, opts: { scope?: ReportScope; de
   out.push(`# ${SCOPES[scope].title}`);
   out.push(`\n**${project.name}**${project.sourceUrl ? ` — ${project.sourceUrl}` : ""}${project.branch ? ` @ \`${project.branch}\`` : ""}${project.commit ? ` (\`${project.commit.slice(0, 10)}\`)` : ""}  `);
   out.push(`Generated ${new Date(docs.generatedAt).toISOString()} · ${docs.meta.aiUsed ? `AI-assisted (${docs.meta.provider ?? "provider"}, ${docs.meta.model ?? "model"})` : "deterministic (no AI provider)"}  `);
-  out.push(`Statements are backed by repository evidence in the form \`path:line-range\`. Findings are labelled **static analyzer** (deterministic) or **AI-inferred**, and **needs verification** where evidence is incomplete.\n`);
+  out.push(`Statements are backed by repository evidence in the form \`path:line-range\`. Findings are labelled **static analyzer** (deterministic), **proved (Lean 4)** (a machine-checked counterexample) or **AI-inferred**, and **needs verification** where evidence is incomplete.\n`);
 
   if (concise) out.push(`_This is the condensed report. The **Complete Technical Report** contains every finding, file, symbol and map in full._\n`);
 
@@ -272,7 +272,7 @@ function reviewSummary(findings: FindingRow[], project: ProjectRow, concise = fa
   const cat = by((f) => f.category);
   const pipeline = ((project.analysis ?? {}) as { pipeline?: { analyzers?: { name: string; status: string; detail: string; findings: number }[]; ai?: { ran: boolean } } }).pipeline;
   const lines = [
-    `${findings.length} finding(s): ${SEV_ORDER.map((s) => `${sev.get(s) ?? 0} ${s.toLowerCase()}`).join(", ")}. ${findings.filter((f) => f.origin === "static").length} from static analyzers, ${findings.filter((f) => f.origin === "ai").length} AI-inferred (${findings.filter((f) => f.origin === "ai" && f.verification !== "verified").length} need verification).\n`,
+    `${findings.length} finding(s): ${SEV_ORDER.map((s) => `${sev.get(s) ?? 0} ${s.toLowerCase()}`).join(", ")}. ${findings.filter((f) => f.origin === "static").length} from static analyzers, ${findings.filter((f) => f.origin === "formal").length ? `${findings.filter((f) => f.origin === "formal").length} proved by formal verification, ` : ""}${findings.filter((f) => f.origin === "ai").length} AI-inferred (${findings.filter((f) => f.origin === "ai" && f.verification !== "verified").length} need verification).\n`,
     `By category: ${[...cat.entries()].map(([k, v]) => `${k} ${v}`).join(" · ")}\n`,
   ];
   if (pipeline?.analyzers?.length && !concise) {
@@ -286,7 +286,7 @@ function findingMarkdown(f: FindingRow): string {
   const loc = f.filePath ? `${f.filePath}${f.startLine ? `:${f.startLine}${f.endLine && f.endLine !== f.startLine ? `-${f.endLine}` : ""}` : ""}` : "repository-wide";
   const lines = [
     `\n#### ${f.code} — ${f.title}\n`,
-    `| Severity | Confidence | Category | Source | Status | Location |\n| --- | --- | --- | --- | --- | --- |\n| ${f.severity} | ${f.confidence} | ${f.category} | ${f.origin === "static" ? `Static analyzer (${f.analyzer ?? "n/a"})` : "AI-inferred"} | ${f.verification === "verified" ? "Verified" : "Needs verification"} | \`${loc}\` |\n`,
+    `| Severity | Confidence | Category | Source | Status | Location |\n| --- | --- | --- | --- | --- | --- |\n| ${f.severity} | ${f.confidence} | ${f.category} | ${f.origin === "static" ? `Static analyzer (${f.analyzer ?? "n/a"})` : f.origin === "formal" ? "Proved (Lean 4)" : "AI-inferred"} | ${f.verification === "verified" ? "Verified" : "Needs verification"} | \`${loc}\` |\n`,
   ];
   if (f.evidence) lines.push("**Evidence**\n", fence("", f.evidence));
   lines.push(`**What happens.** ${f.whatHappens}\n`, `**Why it matters.** ${f.whyItMatters}\n`);

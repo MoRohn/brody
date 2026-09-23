@@ -1,10 +1,13 @@
 import { z } from "zod";
+import { mapLimit } from "../util/concurrency";
+import { recordUsage } from "./usage";
 import { config } from "../config";
 import { resolveEmbeddingModel, resolveModel } from "./settings";
 import { AIResponseError, type AIProvider, type AnalysisRequest, type AnalysisResult, type ModelOption } from "./types";
 
 const REQUEST_TIMEOUT_MS = 180_000;
 const MAX_RETRIES = 3;
+const EMBED_CONCURRENCY = 4;
 
 type FormatMode = "json_schema" | "json_object" | "none";
 
@@ -146,10 +149,13 @@ export class OpenAICompatibleProvider implements AIProvider {
         maxTokens,
         { schema: jsonSchema, task: request.task },
       );
-      const u = json.usage as { prompt_tokens?: number; completion_tokens?: number } | undefined;
+      const u = json.usage as { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } } | undefined;
       usage.calls++;
       usage.inputTokens += u?.prompt_tokens ?? 0;
       usage.outputTokens += u?.completion_tokens ?? 0;
+      // prompt_tokens includes the cached part, which is billed at the cached-input price.
+      const cached = u?.prompt_tokens_details?.cached_tokens ?? 0;
+      recordUsage({ provider: this.name, model: typeof json.model === "string" && json.model ? json.model : this.model, task: request.task, inputTokens: (u?.prompt_tokens ?? 0) - cached, outputTokens: u?.completion_tokens ?? 0, cacheReadTokens: cached, host: this.host() });
       const choice = (json.choices as { finish_reason?: string; message?: { content?: unknown; refusal?: string | null } }[] | undefined)?.[0];
       if (choice?.message?.refusal) throw new AIResponseError("The model declined this request.", String(choice.message.refusal).slice(0, 300));
       const content = textOf(choice?.message?.content);
@@ -188,11 +194,18 @@ export class OpenAICompatibleProvider implements AIProvider {
   async embed(texts: string[]): Promise<number[][]> {
     const model = resolveEmbeddingModel();
     if (!model) throw new AIResponseError("No embedding model configured (AI_EMBEDDING_MODEL).");
+    // Batches of 64, a few in flight at once (a large repository needs dozens), reassembled in input order.
+    const batches: string[][] = [];
+    for (let i = 0; i < texts.length; i += 64) batches.push(texts.slice(i, i + 64));
+    const results = await mapLimit(batches, EMBED_CONCURRENCY, async (input) => {
+      const json = await this.request("POST", "/embeddings", { model, input });
+      recordUsage({ provider: this.name, model, task: "embed", inputTokens: (json.usage as { prompt_tokens?: number } | undefined)?.prompt_tokens ?? 0, outputTokens: 0, host: this.host() });
+      const data = json.data as { embedding: number[]; index?: number }[];
+      // The API may return items out of order; each carries its index within the batch.
+      return data.every((d) => typeof d.index === "number") ? [...data].sort((a, b) => a.index! - b.index!).map((d) => d.embedding) : data.map((d) => d.embedding);
+    });
     const out: number[][] = [];
-    for (let i = 0; i < texts.length; i += 64) {
-      const json = await this.request("POST", "/embeddings", { model, input: texts.slice(i, i + 64) });
-      for (const d of json.data as { embedding: number[] }[]) out.push(d.embedding);
-    }
+    for (const r of results) for (const v of r) out.push(v);
     return out;
   }
 }

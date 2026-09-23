@@ -19,7 +19,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} ${lora.variable} ${unbounded.variable} antialiased`} suppressHydrationWarning>
       <head>
-        {/* Sets data-level before hydration, so the attribute legitimately differs from the server's HTML. */}
+        {/* Sets data-level before hydration, so the attribute legitimately differs from the server's HTML.
+            brody-ignore: innerhtml (a constant script built from Brody's own theme ids, no request data) */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="min-h-screen">{children}</body>

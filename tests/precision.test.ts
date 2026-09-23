@@ -9,6 +9,29 @@ const ids = (lang: string, text: string, path = "src/x.ts") => scanText(path, la
 const arch = (r: { project: { analysis: unknown } }) => (r.project.analysis as { architecture: Architecture }).architecture;
 
 describe("rule precision: code, not strings, comments, regexes or tests", () => {
+  it("blanks the middle lines of a template literal that spans lines, so embedded scripts are not reviewed as code", () => {
+    const script = "const page = `<script>\n  try { history.replaceState(null, '', h) } catch (e) {}\n  el.innerHTML = x;\n</script>`;\ntry { run(); } catch (e) {}";
+    const found = scanText("src/page.ts", "TypeScript", script, false);
+    expect(found.filter((f) => f.analyzer === "brody-rules/empty-catch").map((f) => f.startLine)).toEqual([5]);
+    expect(found.some((f) => f.analyzer === "brody-rules/innerhtml")).toBe(false);
+    // An interpolation inside a multi-line template is still code.
+    expect(ids("TypeScript", "const q = `SELECT *\n  FROM t WHERE id = ${eval(input)}\n`;")).toContain("eval");
+  });
+  it("treats a catch that explains itself as intentional", () => {
+    expect(ids("TypeScript", "try { a(); } catch { /* storage is optional */ }")).not.toContain("empty-catch");
+    expect(ids("TypeScript", "try { a(); } catch {}")).toContain("empty-catch");
+  });
+  it("does not call a retry loop a sequential-await problem", () => {
+    expect(ids("TypeScript", "for (let attempt = 0; attempt < 3; attempt++) {\n  const r = await fetch(url);\n}")).not.toContain("loop-await");
+    expect(ids("TypeScript", "for (const id of ids) {\n  const r = await fetch(`/x/${id}`);\n}")).toContain("loop-await");
+  });
+  it("does not call a URL with a variable host a hard-coded plain HTTP call", () => {
+    expect(ids("Shell", 'URL="http://$HOST_NAME:$PORT"', "scripts/run.sh")).not.toContain("http-plain");
+    expect(ids("TypeScript", 'fetch("http://api.partner.com/v1")')).toContain("http-plain");
+  });
+  it("never loops forever on a pattern that can match an empty string", () => {
+    expect(() => scanText("src/a.ts", "TypeScript", "x\n".repeat(50), false)).not.toThrow();
+  });
   it("blanks literal contents and trailing comments", () => {
     expect(blankLiterals('const a = "eval(x)"; // eval(y)')).toBe('const a = ""; ');
     expect(blankLiterals("const r = /eval\\(x\\)/g.test(s);")).toBe("const r = /re/.test(s);");

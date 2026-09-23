@@ -264,6 +264,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .dots i { width: 5px; height: 5px; border-radius: 9999px; background: currentColor; animation: pulse-dot 1.2s ease-in-out infinite; }
 .dots i:nth-child(2) { animation-delay: .2s; }
 .dots i:nth-child(3) { animation-delay: .4s; }
+/* .live-dot marks a number that is still changing (AI usage during a run). */
+.live-dot { display: inline-block; flex: none; width: 7px; height: 7px; border-radius: 9999px; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); animation: pulse-dot 1.2s ease-in-out infinite; }
 /* The brightness slider: a track that previews the five backgrounds, and a thumb that is unmistakably a control on any of them. */
 .level-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 12px; border-radius: 9999px; border: 1px solid var(--line-strong); background: linear-gradient(to right, var(--swatch-bright), var(--swatch-original), var(--swatch-default), var(--swatch-dark), var(--swatch-darkest)); cursor: pointer; }
 .level-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 26px; height: 26px; border-radius: 9999px; background: var(--fill); border: 4px solid var(--panel); box-shadow: 0 0 0 1.5px var(--deep), 0 2px 6px rgba(0, 0, 0, .3); cursor: grab; }
@@ -282,7 +284,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .spinner, .btn[aria-busy="true"]::before { animation: spin 2.4s linear infinite !important; }
-  .dots i { animation: pulse-dot 2.4s ease-in-out infinite !important; }
+  .dots i, .live-dot { animation: pulse-dot 2.4s ease-in-out infinite !important; }
   .progress.indeterminate > .bar { width: 100%; opacity: .45; }
 }
 

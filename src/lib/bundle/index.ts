@@ -38,8 +38,12 @@ export type BundleManifest = z.infer<typeof ManifestSchema>;
 
 const ID_RE = /\b(?:prj|f|sym|rel|fnd|job|q|flow)_[0-9a-f]{20}\b/g;
 
+let version: string | undefined;
+/** Read once per process: the version cannot change while the server runs. */
 function brodyVersion(): string {
-  try { return (JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8")) as { version?: string }).version ?? "unknown"; } catch { return "unknown"; }
+  // brody-ignore: sync-io (once per process)
+  try { version ??= (JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8")) as { version?: string }).version ?? "unknown"; } catch { version = "unknown"; }
+  return version;
 }
 
 const safeName = (s: string) => s.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "project";

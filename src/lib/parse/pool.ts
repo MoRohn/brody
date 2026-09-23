@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import { createRequire } from "node:module";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 import { config } from "../config";
@@ -40,9 +39,9 @@ function resolveWorker(): { file: string; execArgv: string[] } | null {
   let out: { file: string; execArgv: string[] } | null = null;
   if (bundle) out = { file: bundle, execArgv: [] };
   else {
-    const source = roots.map((r) => path.join(r, "src", "lib", "parse", "worker.ts")).find((c) => fs.existsSync(c));
-    let tsx = false;
-    try { tsx = !!createRequire(path.join(process.cwd(), "noop.js")).resolve("tsx"); } catch { /* not installed */ }
+    const source = roots.map((r) => path.join(r, "src", "lib", "parse", "worker.ts")).find((c) => fs.existsSync(c)); // brody-ignore: sync-io
+    // Whether tsx is installed, found on disk rather than through a module request that bundlers would try to follow.
+    const tsx = roots.some((r) => fs.existsSync(path.join(r, "node_modules", "tsx", "package.json"))); // brody-ignore: sync-io
     if (source && tsx) out = { file: source, execArgv: ["--import", "tsx"] };
   }
   if (!explicit) resolved = out;

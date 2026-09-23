@@ -7,12 +7,14 @@ import { AnalysisProgress, ProjectCtx, SearchBox, StatusChip, type ProjectSummar
 import { Brand } from "@/components/Brand";
 import { Icon, type IconName } from "@/components/Icon";
 import { ThemeControl } from "@/components/ThemeControl";
+import { runUsage, UsagePill } from "@/components/usage";
 import { Chip, ErrorBox, Loading } from "@/components/ui";
 import { api, useApi } from "@/lib/client";
 
 const NAV: { slug: string; label: string; icon: IconName }[] = [
   { slug: "", label: "Overview", icon: "overview" },
   { slug: "review", label: "Code Review", icon: "review" },
+  { slug: "proofs", label: "Formal Proofs", icon: "proof" },
   { slug: "explain", label: "System Explanation", icon: "explain" },
   { slug: "architecture", label: "Architecture", icon: "architecture" },
   { slug: "map", label: "Code Map", icon: "map" },
@@ -65,6 +67,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
             {ready && <SearchBox projectId={id} />}
             {ready && <DownloadMenu projectId={id} scope="full" label="Export report" />}
             {ready && <button className="btn" onClick={reanalyze} disabled={busy} aria-busy={busy} title="Re-run the analysis (GitHub projects fetch the latest commit)">{busy ? "Starting…" : "Re-analyze"}</button>}
+            {(() => { const run = runUsage(project.job); return run ? <UsagePill run={run} /> : null; })()}
             <ThemeControl />
           </div>
         </header>

@@ -8,6 +8,7 @@ import { getDb, schema, projectRows } from "../db/client";
 import type { Architecture } from "../discover/types";
 import { loadProjectFiles } from "../graph/build";
 import { UsageMeter, type AIProvider } from "../ai";
+import { formalAvailability, runFormalVerification, type FormalReport } from "../formal";
 import { newId } from "../util/ids";
 import { runAiReview } from "./ai";
 import { assignCodes, dedupe, verifyDeterministic, verifyWithAI } from "./verify";
@@ -67,7 +68,12 @@ export interface FullReviewResult {
   rejected: number;
   ai: { ran: boolean; passes: { key: string; label: string; calls: number; findings: number; failed: number }[]; reviewedFiles: number; failures: { task: string; error: string }[] };
   analyzers: AnalyzerStatus[];
+  /** Lean 4 formal verification of the most complex functions, with each proof linked to the finding it produced. */
+  formal: FormalReport;
 }
+
+/** The review's pipeline stages, in order. A stage that cannot run is reported with the reason. */
+export type ReviewStage = "static" | "review" | "formal" | "verify";
 
 /** Full review: static + AI candidates -> verification -> dedupe -> persisted findings with stable codes. */
 export async function runReview(opts: {
@@ -76,7 +82,7 @@ export async function runReview(opts: {
   provider: AIProvider | null;
   meter: UsageMeter;
   onProgress?: (msg: string) => void;
-  onStage?: (stage: "static" | "ai" | "verify") => void;
+  onStage?: (stage: ReviewStage, skipped?: string) => void;
   isCancelled?: () => boolean;
   /** Per-file checks already computed while parsing; the static stage reuses them instead of repeating the work. */
   checks?: Map<string, FileChecks>;
@@ -97,14 +103,13 @@ export async function runReview(opts: {
   let passes: { key: string; label: string; calls: number; findings: number; failed: number }[] = [];
   let reviewedFiles = 0;
   if (provider && !opts.isCancelled?.()) {
-    opts.onStage?.("ai");
+    opts.onStage?.("review");
     const ai = await runAiReview({ provider, meter, projectId, files, arch, onProgress: opts.onProgress, isCancelled: opts.isCancelled });
     aiDrafts = ai.drafts;
     passes = ai.passes;
     reviewedFiles = ai.reviewedFiles.length;
-  }
+  } else opts.onStage?.("review", "No AI provider");
 
-  opts.onStage?.("verify");
   // Deterministic verification: drops AI findings that cite missing files or quote code that is not there.
   let candidates: FindingDraft[] = [];
   let droppedUngrounded = 0;
@@ -114,12 +119,40 @@ export async function runReview(opts: {
     else droppedUngrounded++;
   }
   if (droppedUngrounded) opts.onProgress?.(`Dropped ${droppedUngrounded} AI candidate(s) whose cited code could not be found in the repository`);
-  if (provider && candidates.length && !opts.isCancelled?.()) candidates = await verifyWithAI({ provider, meter, candidates, ctx, isCancelled: opts.isCancelled });
+
+  // Formal verification: Lean settles the claims it can model (a proof outranks an opinion) and hunts for defects in the
+  // most complex functions. Claims it settles skip the AI verifier.
+  const avail = opts.isCancelled?.() ? { lean: null, reason: "Cancelled" } : await formalAvailability(provider);
+  let formal: FormalReport = { status: "skipped", reason: avail.reason, generatedAt: Date.now(), targets: [], totals: { targets: 0, checked: 0, proved: 0, defects: 0, guarantees: 0, claimsConfirmed: 0, claimsRefuted: 0, disputed: 0, unproven: 0 } };
+  let formalDrafts: FindingDraft[] = [];
+  const settled = new Set<number>();
+  if (provider && avail.lean) {
+    opts.onStage?.("formal");
+    const run = await runFormalVerification({ provider, meter, lean: avail.lean, files: filesByPath, symbols, rels, candidates, onProgress: opts.onProgress, isCancelled: opts.isCancelled });
+    formal = run.report;
+    formalDrafts = run.drafts;
+    for (const [i, v] of run.verdicts) {
+      settled.add(i);
+      const c = candidates[i];
+      candidates[i] = { ...c, verification: v.verdict === "confirmed" ? "verified" : "rejected", confidence: v.verdict === "confirmed" ? "High" : c.confidence, formalRef: v.formalRef, verificationNote: [c.verificationNote, v.note].filter(Boolean).join("; ") };
+    }
+  } else opts.onStage?.("formal", avail.reason ?? "Unavailable");
+
+  opts.onStage?.("verify");
+  if (provider && candidates.length && !opts.isCancelled?.()) {
+    const open = candidates.filter((_, i) => !settled.has(i));
+    const checked = open.length ? await verifyWithAI({ provider, meter, candidates: open, ctx, isCancelled: opts.isCancelled }) : [];
+    let k = 0;
+    candidates = candidates.map((c, i) => (settled.has(i) ? c : checked[k++]));
+  }
   const rejected = candidates.filter((c) => c.verification === "rejected").length + droppedUngrounded;
   candidates = candidates.filter((c) => c.verification !== "rejected");
   // AI findings that were never checked by the AI verifier stay flagged "needs verification".
-  const merged = dedupe([...stat.drafts, ...candidates]);
+  const merged = dedupe([...stat.drafts, ...formalDrafts, ...candidates]);
   const coded = assignCodes(merged);
+  // Link every proof to the finding it produced or settled, so the report can show the Lean source beside it.
+  const codeByRef = new Map(coded.filter((f) => f.formalRef).map((f) => [f.formalRef!, f.code]));
+  for (const t of formal.targets) for (const p of t.properties) p.findingCode = codeByRef.get(`${t.id}/${p.theorem}`);
 
   // Area assignment for filtering.
   db.transaction((tx) => {
@@ -140,5 +173,6 @@ export async function runReview(opts: {
     rejected,
     ai: { ran: !!provider, passes, reviewedFiles, failures: meter.failures },
     analyzers: stat.analyzers,
+    formal,
   };
 }

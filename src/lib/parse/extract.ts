@@ -2,6 +2,8 @@ import type { Node, Tree } from "./treesitter";
 import { createComplexity } from "./complexity";
 import { emptyParse, type ParsedFile, type ParsedSymbol, type SymbolKind } from "./types";
 
+/** The parse warning for a file the tree-sitter grammar could not fully parse. */
+export const SYNTAX_WARNING = "syntax errors present; extraction may be partial";
 
 interface Ctx {
   src: string;
@@ -813,6 +815,6 @@ export function extractFromTree(language: string, grammarKey: string, tree: Tree
     case "Shell": extractShell(ctx, tree); break;
     default: out.status = "text";
   }
-  if (tree.rootNode.hasError) out.error = "syntax errors present; extraction may be partial";
+  if (tree.rootNode.hasError) out.error = SYNTAX_WARNING;
   return out;
 }

@@ -13,8 +13,9 @@ export interface FindingDraft {
   category: Category;
   severity: Severity;
   confidence: Confidence;
-  origin: "static" | "ai";
-  /** Analyzer name for static findings (eslint, ruff, typescript, brody-rules...). */
+  /** static: deterministic analyzers; ai: model judgement checked against the source; formal: proved by the Lean 4 kernel. */
+  origin: "static" | "ai" | "formal";
+  /** Analyzer name for static findings (eslint, ruff, typescript, brody-rules, lean4...). */
   analyzer?: string;
   filePath?: string;
   startLine?: number;
@@ -29,6 +30,8 @@ export interface FindingDraft {
   verification?: Verification;
   verificationNote?: string;
   area?: string;
+  /** Link to the proof in the formal verification report ("<target id>/<theorem>"); not stored on the finding row. */
+  formalRef?: string;
 }
 
 export const SEVERITY_ORDER: Severity[] = ["Critical", "High", "Medium", "Low", "Informational"];

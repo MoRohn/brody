@@ -50,6 +50,23 @@ function stubFetch(fn: (url: string, body: Record<string, unknown> | undefined, 
 }
 
 describe("OpenAI compatibility", () => {
+  it("embeds in parallel batches of 64 and keeps every vector in input order, even when items come back shuffled", async () => {
+    Object.assign(config.ai, { embeddingModel: "text-embedding-3-small" });
+    let inFlight = 0, peak = 0;
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as { input: string[] };
+      inFlight++; peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight--;
+      const data = body.input.map((t, index) => ({ index, embedding: [Number(t)] })).reverse();
+      return new Response(JSON.stringify({ data, usage: { prompt_tokens: body.input.length } }), { status: 200 });
+    }));
+    const texts = Array.from({ length: 300 }, (_, i) => String(i));
+    const vecs = await new OpenAICompatibleProvider({ baseUrl: "https://api.openai.com/v1", apiKey: "k", model: "gpt-5" }).embed(texts);
+    expect(vecs.map((v) => v[0])).toEqual(texts.map(Number));
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(4);
+  });
   it("defaults to an OpenAI model, never a Claude model", () => {
     Object.assign(config.ai, { legacyModel: undefined, openaiApiKey: "k" });
     expect(new OpenAICompatibleProvider({ apiKey: "k" }).model).toBe("gpt-4.1");

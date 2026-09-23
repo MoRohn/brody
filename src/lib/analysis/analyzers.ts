@@ -101,6 +101,7 @@ export async function runEslint(files: LoadedFile[], checks?: Map<string, FileCh
   let runner: LintRunner | null | undefined;
   const findings: FindingDraft[] = [];
   let linted = 0;
+  // brody-ignore: loop-await (the only await creates the linter once, on first need)
   for (const f of targets) {
     let res = checks?.get(f.path)?.lint;
     if (!res) {

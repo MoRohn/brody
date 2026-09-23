@@ -1,7 +1,11 @@
 /**
  * Pipeline benchmark on synthetic repositories.
  *   npm run benchmark -- 200 1000 3000        (file counts; default 200 1000)
+ *   npm run benchmark -- --budget 200 1000    (also fail if a budget below is exceeded; used by npm run validate)
  * Prints per-stage timings, peak memory, database size and export times.
+ *
+ * Budgets are deliberately generous (several times the measured results on a 2020 laptop) so they hold on slower
+ * machines and only trip on real regressions: a quadratic step, a lost cache or a leak.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -35,6 +39,11 @@ function synth(n: number): { path: string; content: Buffer }[] {
 }
 
 const sizes = process.argv.slice(2).map(Number).filter(Boolean);
+const enforce = process.argv.includes("--budget");
+/** Whole pipeline without AI, per repository size. Memory includes up to four parse worker threads (about 300 MB each). */
+const BUDGET = { pipelineMs: (n: number) => 3000 + 6 * n, rssMb: (n: number) => 1500 + 0.4 * n, searchWarmMs: 250, changeImpactMs: 250, pdfMs: 5000 };
+const breaches: string[] = [];
+const check = (n: number, what: string, value: number, limit: number, unit: string) => { if (value > limit) breaches.push(`${n} files: ${what} ${Math.round(value)} ${unit} is over the budget of ${Math.round(limit)} ${unit}`); };
 if (sizes.length === 0) sizes.push(200, 1000);
 const ms = (t: number) => `${Math.round(t)}ms`.padStart(8);
 const rss = () => Math.round(process.memoryUsage().rss / 1024 / 1024);
@@ -60,20 +69,27 @@ for (const n of sizes) {
   console.log(`\n=== ${n} source files (${files.length} total, ${lines.toLocaleString()} lines) ===`);
   console.log(`normalize ${ms(tNorm)}   store ${ms(tStore)}   pipeline ${ms(tPipe)}   rss ${rss()} MB   db ${(fs.statSync(dbPath).size / 1024 / 1024).toFixed(1)} MB`);
   for (const s of j.stages) console.log(`  ${s.label.padEnd(42)} ${ms(s.startedAt && s.finishedAt ? s.finishedAt - s.startedAt : 0)}  ${(s.detail ?? "").slice(0, 70)}`);
-  const time = async (label: string, fn: () => unknown | Promise<unknown>) => { const s = performance.now(); await fn(); console.log(`  ${label.padEnd(42)} ${ms(performance.now() - s)}`); };
+  check(n, "pipeline", tPipe, BUDGET.pipelineMs(n), "ms");
+  const time = async (label: string, fn: () => unknown | Promise<unknown>) => { const s = performance.now(); await fn(); const t = performance.now() - s; console.log(`  ${label.padEnd(42)} ${ms(t)}`); return t; };
   console.log("  -- interactive operations --");
   await time("loadModel (cold)", () => loadModel(projectId));
   await time("areaGraph", () => areaGraph(projectId));
   await time("moduleGraph (top 60)", () => moduleGraph(projectId, { limit: 60 }));
   const sym = loadModel(projectId).symbols.find((s) => s.name.startsWith("fn_1_"))!;
-  await time("changeImpact (symbol)", () => changeImpact(projectId, { type: "symbol", id: sym.id }));
+  check(n, "change impact", await time("changeImpact (symbol)", () => changeImpact(projectId, { type: "symbol", id: sym.id })), BUDGET.changeImpactMs, "ms");
   await time("search (cold index)", () => search(projectId, "helper service run", { includeCode: true }));
-  await time("search (warm)", () => search(projectId, "fn_2_3", { includeCode: true }));
+  check(n, "warm search", await time("search (warm)", () => search(projectId, "fn_2_3", { includeCode: true })), BUDGET.searchWarmMs, "ms");
   await time("ask (graph)", () => askRepository(projectId, `Which components depend on ${sym.name}?`));
   await time("markdown report", () => buildMarkdown(projectId));
-  await time("PDF (full)", async () => { const r = await exportFile(projectId, "pdf", "full"); console.log(`     -> ${((r.body as Buffer).length / 1024).toFixed(0)} KB`); });
+  check(n, "PDF export", await time("PDF (full)", async () => { const r = await exportFile(projectId, "pdf", "full"); console.log(`     -> ${((r.body as Buffer).length / 1024).toFixed(0)} KB`); }), BUDGET.pdfMs, "ms");
   await time("DOCX (full)", async () => { const r = await exportFile(projectId, "docx", "full"); console.log(`     -> ${((r.body as Buffer).length / 1024).toFixed(0)} KB`); });
   console.log(`  peak rss ${rss()} MB`);
+  check(n, "peak memory", rss(), BUDGET.rssMb(n), "MB");
   closeDatabase();
   for (const f of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) fs.rmSync(f, { force: true });
+}
+
+if (enforce) {
+  if (breaches.length) { console.error(`\nPerformance budget exceeded:\n- ${breaches.join("\n- ")}`); process.exit(1); }
+  console.log("\nAll performance budgets met.");
 }

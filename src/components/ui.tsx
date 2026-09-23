@@ -28,7 +28,8 @@ export function Chip({ children, tone = "neutral", title }: { children: ReactNod
 export function OriginBadge({ origin, verification }: { origin: string; verification?: string }) {
   return (
     <span className="inline-flex gap-1">
-      <Chip tone={origin === "static" ? "info" : "neutral"} title={origin === "static" ? "Produced by a deterministic analyzer" : "Inferred by an AI model"}>{origin === "static" ? "Static analyzer" : "AI-inferred"}</Chip>
+      {origin === "formal" ? <Chip tone="ok" title="Proved by the Lean 4 proof kernel with a concrete counterexample">Proved (Lean 4)</Chip>
+        : <Chip tone={origin === "static" ? "info" : "neutral"} title={origin === "static" ? "Produced by a deterministic analyzer" : "Inferred by an AI model"}>{origin === "static" ? "Static analyzer" : "AI-inferred"}</Chip>}
       {verification && verification !== "verified" && <Chip tone="warn" title="Evidence was insufficient to confirm this finding">Needs verification</Chip>}
     </span>
   );

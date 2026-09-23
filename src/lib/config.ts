@@ -98,6 +98,28 @@ export const config = {
     pythonPath: process.env.PYTHON_PATH ?? "python3",
     goPath: process.env.GO_PATH ?? "go",
   },
+  /**
+   * Formal verification with Lean 4. The most complex, riskiest functions are modelled in Lean by the AI provider, and
+   * properties about them are proved (or disproved with a concrete counterexample) by the Lean kernel. Needs a Lean 4
+   * toolchain (elan) and an AI provider; otherwise the stage is skipped. LEAN_BIN names the binary (not LEAN_PATH, which
+   * Lean itself reads as its library search path).
+   */
+  formal: {
+    enabled: process.env.FORMAL_VERIFICATION !== "off",
+    leanBin: process.env.LEAN_BIN || undefined,
+    /** Functions modelled per analysis. */
+    maxTargets: int("FORMAL_MAX_TARGETS", 10),
+    /** Most rounds of feeding Lean's errors back to the model for one function (complex functions get more). */
+    maxRepairRounds: int("FORMAL_MAX_REPAIR_ROUNDS", 3),
+    /** Functions modelled at once. Each Lean process needs a few hundred MB. */
+    concurrency: int("FORMAL_CONCURRENCY", 2),
+    /** Wall-clock limit for one Lean check before it is killed. */
+    timeoutMs: int("FORMAL_TIMEOUT_MS", 60_000),
+    memoryMb: int("FORMAL_MEMORY_MB", 2048),
+    maxHeartbeats: int("FORMAL_MAX_HEARTBEATS", 400_000),
+    /** Optional isolation command put in front of every check, e.g. "bwrap --ro-bind / / --bind /tmp /tmp --dev /dev --unshare-net --die-with-parent". */
+    sandboxPrefix: (process.env.FORMAL_SANDBOX ?? "").split(/\s+/).filter(Boolean),
+  },
   /** Secret used to encrypt stored GitHub credentials at rest. */
   credentialSecret: process.env.CREDENTIAL_SECRET,
 };

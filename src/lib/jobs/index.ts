@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { getDb, schema, projectRows } from "../db/client";
 import type { JobRow, JobStage } from "../db/schema";
-import { explainAIError, getAIProvider, providerStatus, UsageMeter } from "../ai";
+import { explainAIError, getAIProvider, providerStatus, UsageLedger, UsageMeter, withUsageLedger, type UsageSnapshot } from "../ai";
 import { resolveEmbeddingModel } from "../ai/settings";
 import { discoverArchitecture } from "../discover";
 import { generateDocs } from "../docs";
@@ -122,10 +122,20 @@ class Tracker {
     this.flush();
   }
   heartbeat() { this.flush(); }
+  /** Live AI usage for the progress view and the header; replaced by the full summary when the job ends. */
+  usage(aiUsage: UsageSnapshot, model: { provider: string; model: string } | null) { this.flush({ summary: { live: true, model, aiUsage } }); }
 }
 
-/** Run one job to completion. Never throws: failures are persisted on the job and project. */
+/**
+ * Run one job to completion. Never throws: failures are persisted on the job and project. Every AI call made while it runs
+ * is counted in its own usage ledger, which is saved live (at most once a second) so tokens and cost show as they are spent.
+ */
 export async function processJob(jobId: string): Promise<void> {
+  const ledger = new UsageLedger();
+  return withUsageLedger(ledger, () => runJob(jobId, ledger));
+}
+
+async function runJob(jobId: string, ledger: UsageLedger): Promise<void> {
   const db = getDb();
   const job = getJob(jobId);
   if (!job) return;
@@ -137,11 +147,21 @@ export async function processJob(jobId: string): Promise<void> {
   let currentStage: string | null = null;
   const beat = setInterval(() => t.heartbeat(), 15_000);
   const meter = new UsageMeter();
+  let aiModel: { provider: string; model: string } | null = null;
+  let lastUsage = 0;
+  let usageTimer: NodeJS.Timeout | undefined;
+  const pushUsage = () => { lastUsage = Date.now(); t.usage(ledger.snapshot(), aiModel); };
+  ledger.onChange(() => {
+    if (Date.now() - lastUsage >= 1000) pushUsage();
+    else usageTimer ??= setTimeout(() => { usageTimer = undefined; pushUsage(); }, 1000);
+  });
   try {
     const project = db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get();
     if (!project) throw new AppError("project_not_found", "The project was deleted while analysis was queued.", 404);
     const provider = getAIProvider();
     t.note(provider ? `AI provider: ${provider.name} (${provider.model})` : `AI provider unavailable: ${providerStatus().reason}`);
+    aiModel = provider ? { provider: provider.name, model: provider.model } : null;
+    pushUsage();
 
     // 1. Import ---------------------------------------------------------
     currentStage = "import"; t.start("import");
@@ -198,19 +218,30 @@ export async function processJob(jobId: string): Promise<void> {
     const arch = await discoverArchitecture(projectId);
     t.done("architecture", `${arch.pattern.label}; ${arch.routes.length} routes, ${arch.models.length} models, ${arch.areas.length} functional areas, ${arch.externalServices.length} external services`);
 
-    // 7-9. Review -------------------------------------------------------
+    // 7-10. Review ------------------------------------------------------
     currentStage = "static"; t.start("static");
-    let reviewStage: "static" | "ai" | "verify" = "static";
+    const STARTED: Record<string, string> = { review: "Running AI review passes", formal: "Modelling the most complex functions in Lean and checking proofs" };
+    const FINISHED: Record<string, string> = { static: "Static analysis complete", review: "AI review passes complete", formal: "Formal verification complete" };
+    let open: string | null = "static";
     const review = await runReview({
       projectId, arch, provider, meter, isCancelled: t.isCancelled, onProgress: (m) => t.note(m), checks,
-      onStage: (s) => {
-        if (s === "ai") { t.done("static", "Static analysis complete"); if (provider) { currentStage = "review"; t.start("review", "Running AI review passes"); } else { t.skip("review", providerStatus().reason ?? "No AI provider"); } }
-        if (s === "verify") { if (reviewStage === "ai" && provider) t.done("review", "AI review passes complete"); else if (reviewStage === "static") { t.done("static", "Static analysis complete"); t.skip("review", providerStatus().reason ?? "No AI provider"); } currentStage = "verify"; t.start("verify"); }
-        reviewStage = s;
+      // Stages arrive in order; each one closes the previous stage and either starts or is skipped with its reason.
+      onStage: (s, skipped) => {
+        if (open && open !== s) t.done(open, FINISHED[open]);
+        open = null;
+        if (skipped) { t.skip(s, s === "review" ? (providerStatus().reason ?? skipped) : skipped); return; }
+        currentStage = s; t.start(s, STARTED[s]); open = s;
       },
     });
     t.check();
     t.done("verify", `${review.findings} findings: ${review.verified} verified, ${review.needsVerification} need verification; ${review.rejected} AI candidates rejected`);
+    // The formal report (Lean source, theorems, audit notes) is kept with the analysis so the review can show each proof.
+    const withFormal = db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get()!;
+    db.update(schema.projects).set({ analysis: { ...(withFormal.analysis ?? {}), formal: review.formal }, updatedAt: Date.now() }).where(eq(schema.projects.id, projectId)).run();
+    if (review.formal.status === "ran") {
+      const f = review.formal.totals;
+      t.detail("formal", `${f.checked} of ${f.targets} functions modelled in Lean ${review.formal.lean}; ${f.proved} theorems proved: ${f.defects} defects proven by counterexample, ${f.guarantees} guarantees, ${f.claimsConfirmed} review claims confirmed and ${f.claimsRefuted} refuted${f.disputed ? `; ${f.disputed} proofs set aside by the fidelity audit` : ""}`);
+    }
     const aiCalls = review.ai.passes.reduce((a, p) => a + p.calls, 0);
     const aiFailed = review.ai.passes.reduce((a, p) => a + p.failed, 0);
     if (provider && aiCalls > 0 && aiFailed === aiCalls) {
@@ -253,7 +284,8 @@ export async function processJob(jobId: string): Promise<void> {
     // 13. Finalize ------------------------------------------------------
     currentStage = "finalize"; t.start("finalize");
     const fin = db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get()!;
-    const summary = { usage: meter.usage, aiFailures: meter.failures, analyzers: review.analyzers, ai: review.ai, build: { ...buildSummary, errors: build.errors.slice(0, 20) }, model: provider ? { provider: provider.name, model: provider.model } : null };
+    if (usageTimer) { clearTimeout(usageTimer); usageTimer = undefined; }
+    const summary = { aiUsage: ledger.snapshot(), usage: meter.usage, aiFailures: meter.failures, analyzers: review.analyzers, ai: review.ai, formal: { status: review.formal.status, reason: review.formal.reason, lean: review.formal.lean, totals: review.formal.totals }, build: { ...buildSummary, errors: build.errors.slice(0, 20) }, model: provider ? { provider: provider.name, model: provider.model } : null };
     db.update(schema.projects).set({ status: "ready", analysis: { ...(fin.analysis ?? {}), pipeline: summary }, updatedAt: Date.now() }).where(eq(schema.projects.id, projectId)).run();
     t.done("finalize", "Report ready");
     db.update(schema.jobs).set({ status: "succeeded", finishedAt: Date.now(), currentStage: null, summary: summary as unknown as Record<string, unknown> }).where(eq(schema.jobs.id, jobId)).run();
@@ -262,12 +294,15 @@ export async function processJob(jobId: string): Promise<void> {
     const message = cancelled ? "Analysis was cancelled." : e instanceof AppError ? `${e.message}${e.hint ? ` ${e.hint}` : ""}` : `Unexpected error${currentStage ? ` while ${STAGE_DEFS.find((s) => s.key === currentStage)?.label.toLowerCase()}` : ""}: ${scrubToken(e instanceof Error ? e.message : String(e))}`;
     if (!cancelled) t.fail(currentStage, message.slice(0, 400));
     else t.fail(currentStage, "Cancelled");
-    db.update(schema.jobs).set({ status: cancelled ? "cancelled" : "failed", error: message, finishedAt: Date.now() }).where(eq(schema.jobs.id, jobId)).run();
+    // Tokens spent before a failure or cancellation were still billed, so the usage stays on the job.
+    if (usageTimer) { clearTimeout(usageTimer); usageTimer = undefined; }
+    db.update(schema.jobs).set({ status: cancelled ? "cancelled" : "failed", error: message, finishedAt: Date.now(), summary: { model: aiModel, aiUsage: ledger.snapshot() } }).where(eq(schema.jobs.id, jobId)).run();
     const p = db.select({ id: schema.projects.id, status: schema.projects.status }).from(schema.projects).where(eq(schema.projects.id, projectId)).get();
     if (p) db.update(schema.projects).set({ status: cancelled ? "created" : "failed", updatedAt: Date.now() }).where(eq(schema.projects.id, projectId)).run();
     if (!cancelled) console.error(`[brody] job ${jobId} failed:`, scrubToken(e instanceof Error ? (e.stack ?? e.message) : String(e)));
   } finally {
     clearInterval(beat);
+    if (usageTimer) clearTimeout(usageTimer);
   }
 }
 

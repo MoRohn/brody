@@ -58,6 +58,15 @@ describe("evidence association and deterministic verification", () => {
     expect(dropped.patch).toBeUndefined();
     expect(dropped.verificationNote).toContain("patch discarded");
   });
+  it("applies hunks without line numbers (as gpt-5 writes them) only where they match exactly one place", () => {
+    const gpt5 = `--- a/src/run.ts\n+++ b/src/run.ts\n@@\n export function run(input: string) {\n-  const parsed = eval(input);\n+  const parsed = JSON.parse(input);\n   return parsed;`;
+    expect(applyUnifiedDiff(FILE, gpt5)).toMatchObject({ ok: true });
+    expect(applyUnifiedDiff(FILE, gpt5).result).toContain("JSON.parse(input)");
+    expect(applyUnifiedDiff(FILE, "*** Begin Patch\n*** Update File: src/run.ts\n@@ export function safe() {\n-  return 1;\n+  return 2;\n*** End Patch").result).toContain("return 2;");
+    // "  return parsed;" and "}" alone could sit in several places: a header-less hunk that matches twice is refused.
+    expect(applyUnifiedDiff("a\n}\nb\n}\n", "@@\n-}\n+};")).toMatchObject({ ok: false, reason: expect.stringContaining("more than one place") });
+    expect(applyUnifiedDiff(FILE, "@@\n-  const nothing = here;\n+  x")).toMatchObject({ ok: false });
+  });
   it("applies unified diffs with drifted line numbers and rejects mismatches", () => {
     const diff = `@@ -20,2 +20,2 @@\n-  return 1;\n+  return 2;\n }`;
     expect(applyUnifiedDiff(FILE, diff).result).toContain("return 2;");

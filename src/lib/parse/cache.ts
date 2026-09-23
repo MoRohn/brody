@@ -3,7 +3,7 @@ import { bulkInsert, getDb, schema } from "../db/client";
 import type { ParsedFile } from "./types";
 
 /** Bump when extraction logic changes so stale cached parses are ignored. */
-export const PARSER_VERSION = "3"; // 3: cached results also carry the per-file static checks (syntax diagnostics, ESLint)
+export const PARSER_VERSION = "4"; // 4: grammar-only tree-sitter errors are dropped when the TypeScript compiler accepts the file
 
 export function parseCacheKey(language: string, path: string, hash: string): string {
   const variant = /\.(tsx|jsx)$/i.test(path) ? "x" : "";

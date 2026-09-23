@@ -28,6 +28,16 @@ for (const s of j.stages) console.log(" ", s.status.padEnd(7), s.label, "-", (s.
 const sum = j.summary as { usage: unknown; aiFailures: { task: string; error: string }[]; ai: { passes: unknown[] } } | null;
 console.log("usage:", JSON.stringify(sum?.usage), "failures:", JSON.stringify(sum?.aiFailures?.slice(0, 4)));
 console.log("passes:", JSON.stringify(sum?.ai?.passes));
+const live = (j.summary as { aiUsage?: { calls: number; inputTokens: number; outputTokens: number; costUsd: number | null; models: { model: string; calls: number; costUsd: number | null; priceBasis: string }[]; stages: { label: string; calls: number; costUsd: number | null }[] } } | null)?.aiUsage;
+console.log("ai usage:", live ? `${live.calls} requests, ${live.inputTokens} in / ${live.outputTokens} out, cost ${live.costUsd === null ? "n/a" : `$${live.costUsd.toFixed(4)}`}` : "not recorded");
+for (const m of live?.models ?? []) console.log(`  model ${m.model}: ${m.calls} requests, ${m.costUsd === null ? "n/a" : `$${m.costUsd.toFixed(4)}`} (${m.priceBasis})`);
+for (const st of live?.stages ?? []) console.log(`  step ${st.label}: ${st.calls} requests, ${st.costUsd === null ? "n/a" : `$${st.costUsd.toFixed(4)}`}`);
+const formal = (getDb().select().from(schema.projects).where(eq(schema.projects.id, projectId)).get()!.analysis as { formal?: { status: string; reason?: string; lean?: string; totals: Record<string, number>; targets: { symbol: string; filePath: string; status: string; note: string; rounds: number; properties: { theorem: string; intent: string; outcome: string; claim: string; witness: string; errors: string[] }[] }[] } }).formal;
+console.log("\nFORMAL", formal?.status, formal?.reason ?? "", formal?.lean ?? "", JSON.stringify(formal?.totals ?? {}));
+for (const t of formal?.targets ?? []) {
+  console.log(`- ${t.symbol} (${t.filePath}) ${t.status}, ${t.rounds} round(s)${t.note ? `: ${t.note.slice(0, 160)}` : ""}`);
+  for (const p of t.properties) console.log(`    ${p.outcome.padEnd(14)} [${p.intent}] ${p.theorem}: ${p.claim.slice(0, 140)}${p.witness ? ` | witness: ${p.witness.slice(0, 100)}` : ""}${p.errors.length ? ` | lean: ${p.errors[0].slice(0, 120).replace(/\n/g, " ")}` : ""}`);
+}
 const findings = getDb().select().from(schema.findings).where(eq(schema.findings.projectId, projectId)).all();
 console.log("\nFINDINGS", findings.length, "ai:", findings.filter((f) => f.origin === "ai").length);
 for (const f of findings.filter((x) => x.origin === "ai" || (x.verificationNote ?? "").includes("AI"))) console.log(`- ${f.code} [${f.severity}/${f.confidence}/${f.verification}] ${f.origin} ${f.filePath}:${f.startLine} ${f.title}\n    note: ${(f.verificationNote ?? "").slice(0, 220)}${f.patch ? "\n    PATCH: yes" : ""}`);

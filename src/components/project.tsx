@@ -6,6 +6,7 @@ import { api, ApiError, fmtDuration, useApi } from "@/lib/client";
 import type { JobStage } from "@/lib/db/schema";
 import { Icon } from "./Icon";
 import { Chip, ErrorBox, Loading, Spinner } from "./ui";
+import { runUsage, UsagePanel } from "./usage";
 
 export interface ProjectSummary {
   id: string; name: string; sourceType: string; sourceUrl: string | null; owner: string | null; branch: string | null; commit: string | null;
@@ -75,6 +76,7 @@ export function AnalysisProgress({ project, reload }: { project: ProjectSummary;
           </p>
         </>
       )}
+      {(() => { const run = runUsage(job); return run?.model ? <UsagePanel run={run} /> : null; })()}
       {job?.error && (
         <div role="alert" className="card mt-4 p-3" style={{ borderColor: job.status === "cancelled" ? "var(--line)" : "var(--crit)" }}>
           <div className="font-semibold" style={{ color: job.status === "cancelled" ? "var(--fg)" : "var(--crit)" }}>{job.status === "cancelled" ? "Analysis was cancelled" : "What went wrong"}</div>

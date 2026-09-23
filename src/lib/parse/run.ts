@@ -1,4 +1,5 @@
 import { createLintRunner, syntaxDiagnostics, type LintRunner } from "../analysis/checkcore";
+import { SYNTAX_WARNING } from "./extract";
 import { parseFile } from "./index";
 import type { FileChecks, ParsedFile } from "./types";
 
@@ -17,6 +18,10 @@ export async function runParseJob(job: ParseJob): Promise<ParseOutput> {
     const parsed = await parseFile(job.path, job.language, job.source);
     const checks: FileChecks = {};
     if (job.syntax) checks.syntax = syntaxDiagnostics(job.path, job.source);
+    // The TypeScript compiler is the authority on TypeScript syntax. When it accepts the file, a tree-sitter error is a
+    // gap in the grammar (a bare & in a JSX string, `unique` used as a name), not a problem in the repository, so it is
+    // not reported as one; the grammar recovers locally and the rest of the file is extracted as usual.
+    if (checks.syntax?.length === 0 && parsed.error === SYNTAX_WARNING) parsed.error = undefined;
     if (job.lint) {
       const runner = await (lintRunner ??= createLintRunner());
       if (runner) checks.lint = runner(job.path, job.source);

@@ -180,7 +180,9 @@ function similarity(a: string, b: string): number {
  * problems are never collapsed.
  */
 export function dedupe(drafts: FindingDraft[]): FindingDraft[] {
-  const sorted = [...drafts].sort((a, b) => (a.origin === "static" ? 0 : 1) - (b.origin === "static" ? 0 : 1) || SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity));
+  // Deterministic results win, then proofs, then model judgement.
+  const rank = (d: FindingDraft) => (d.origin === "static" ? 0 : d.origin === "formal" ? 1 : 2);
+  const sorted = [...drafts].sort((a, b) => rank(a) - rank(b) || SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity));
   const kept: FindingDraft[] = [];
   for (const d of sorted) {
     const dup = kept.find((k) => {
@@ -197,7 +199,7 @@ export function dedupe(drafts: FindingDraft[]): FindingDraft[] {
       // Enrich the kept finding with a suggested patch or business impact from the duplicate.
       if (!dup.patch && d.patch) dup.patch = d.patch;
       if (!dup.businessImpact && d.businessImpact) dup.businessImpact = d.businessImpact;
-      if (d.origin !== dup.origin) dup.verificationNote = [dup.verificationNote, `Also reported by ${d.origin === "ai" ? "AI review" : d.analyzer}.`].filter(Boolean).join(" ");
+      if (d.origin !== dup.origin) dup.verificationNote = [dup.verificationNote, `Also reported by ${d.origin === "ai" ? "AI review" : d.origin === "formal" ? "formal verification (Lean 4)" : d.analyzer}.`].filter(Boolean).join(" ");
       continue;
     }
     kept.push({ ...d });

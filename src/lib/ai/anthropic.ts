@@ -2,13 +2,14 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { config } from "../config";
 import { resolveModel } from "./settings";
+import { recordUsage } from "./usage";
 import { AIResponseError, type AIProvider, type AnalysisRequest, type AnalysisResult, type ModelOption } from "./types";
 
 interface ParsedMessage<T> {
   parsed_output?: T | null;
   stop_reason?: string | null;
   stop_details?: { category?: string | null; explanation?: string | null } | null;
-  usage?: { input_tokens?: number; output_tokens?: number };
+  usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null };
   model?: string;
 }
 
@@ -84,6 +85,8 @@ export class AnthropicProvider implements AIProvider {
       usage.calls++;
       usage.inputTokens += msg.usage?.input_tokens ?? 0;
       usage.outputTokens += msg.usage?.output_tokens ?? 0;
+      // The model that answered: a server-side fallback can serve a different, differently priced model.
+      recordUsage({ provider: this.name, model: msg.model ?? this.model, task: request.task, inputTokens: msg.usage?.input_tokens ?? 0, outputTokens: msg.usage?.output_tokens ?? 0, cacheReadTokens: msg.usage?.cache_read_input_tokens ?? 0, cacheWriteTokens: msg.usage?.cache_creation_input_tokens ?? 0 });
       if (msg.stop_reason === "refusal") {
         throw new AIResponseError(`The model declined this request${msg.stop_details?.category ? ` (${msg.stop_details.category})` : ""}.`, msg.stop_details?.explanation ?? undefined);
       }

@@ -11,6 +11,8 @@ import { AIUnavailableError, type AIProvider, type AnalysisRequest, type Analysi
 export * from "./types";
 export * from "./prompt";
 export * from "./errors";
+export { UsageLedger, withUsageLedger, recordUsage, type UsageSnapshot, type ModelUsage, type StageUsage } from "./usage";
+export { priceFor, PRICES_AS_OF } from "./pricing";
 export { resolveModel, resolveProvider, selectedProvider } from "./settings";
 
 let override: AIProvider | null | undefined;

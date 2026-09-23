@@ -16,6 +16,7 @@
     "verify:ai": "tsx --env-file=.env scripts/verify-ai.mts",
     "db:generate": "drizzle-kit generate",
     "benchmark": "tsx scripts/benchmark.mts",
+    "validate": "bash scripts/validate.sh",
     "convert": "tsx scripts/convert.mts",
     "brody": "bash scripts/brody.sh"
   },

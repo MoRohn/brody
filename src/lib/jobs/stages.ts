@@ -9,6 +9,7 @@ export const STAGE_DEFS: { key: string; label: string }[] = [
   { key: "architecture", label: "Detecting architecture" },
   { key: "static", label: "Running static analysis" },
   { key: "review", label: "Reviewing code" },
+  { key: "formal", label: "Formally verifying complex code (Lean 4)" },
   { key: "verify", label: "Verifying findings" },
   { key: "docs", label: "Generating documentation" },
   { key: "map", label: "Building code map" },

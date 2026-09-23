@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 /** Web performance budgets against the production build (generous; they catch regressions, not micro-differences). */
-const ROUTES = ["", "review", "explain", "architecture", "map", "files?path=src%2Fservices%2ForderService.ts", "ask", "reports"];
+const ROUTES = ["", "review", "explain", "architecture", "map", "files?path=src%2Fservices%2ForderService.ts", "ask", "reports", "proofs"];
 const BUDGET = { domContentLoadedMs: 2500, lcpMs: 3500, jsKB: 700, apiMs: 800 };
 let base = "";
 
