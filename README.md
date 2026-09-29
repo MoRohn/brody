@@ -43,8 +43,6 @@ The most complex and riskiest functions are modelled in **Lean 4** and checked b
 
 A gauge on every project page shows the AI tokens and estimated cost of the latest analysis, **updating live** while it runs, with the model that answered, a per-step breakdown and the prices used. Local or unpriced models show tokens and "cost n/a" rather than a guess.
 
-![An analysis in progress: each pipeline step with timers, and the AI cost rising as requests complete](docs/screenshots/progress.png)
-
 ### See how it fits together
 
 ![Code Map: functional areas laid out by layer, with dependencies, risk marks and a change-impact panel](docs/screenshots/map.png)
@@ -57,18 +55,28 @@ The **Code Map** goes from functional areas to files to a single symbol, marks r
 <td width="50%"><img src="docs/screenshots/explain.png" alt="System Explanation at the whole-system level"><br><b>System Explanation.</b> Four zoom levels, from the whole system to groups of files, single files and symbols, every statement linked to its source.</td>
 </tr>
 <tr>
+<td><img src="docs/screenshots/explain-file.png" alt="System Explanation at the file level: what one file does, its responsibilities, key symbols and dependencies"><br><b>One file, explained.</b> What it does, its responsibilities and key symbols, how it operates, what calls it and what it depends on.</td>
 <td><img src="docs/screenshots/files.png" alt="Files: tree, source with finding markers and a code-intelligence panel"><br><b>Files.</b> Source with symbol and finding markers, callers, callees, data access, tests and change impact.</td>
+</tr>
+<tr>
 <td><img src="docs/screenshots/architecture.png" alt="Architecture: layers, entry points and functional-area dependencies"><br><b>Architecture.</b> Layers, entry points, API and data-model maps, external services, configuration and CI.</td>
-</tr>
-<tr>
 <td><img src="docs/screenshots/ask.png" alt="Ask Repository: a structural question answered exactly from the graph"><br><b>Ask Repository.</b> Structural questions answered exactly from the graph; open questions answered by the model with citations.</td>
-<td><img src="docs/screenshots/deck.png" alt="Executive Deck: a 14-slide leadership briefing"><br><b>Executive Deck.</b> A 14-slide briefing in business language, as PowerPoint, PDF or a web page.</td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/map-dark.png" alt="The Code Map at the Darkest brightness level"><br><b>Five brightness levels,</b> all checked for WCAG AA contrast.</td>
+<td><img src="docs/screenshots/deck.png" alt="Executive Deck: a 14-slide leadership briefing"><br><b>Executive Deck.</b> A 14-slide briefing in business language, as PowerPoint, PDF or a web page.</td>
+<td><img src="docs/screenshots/progress.png" alt="An analysis in progress: each pipeline step with timers, and the AI cost rising as requests complete"><br><b>Live progress.</b> Every pipeline step with timers, and the AI cost rising as requests complete.</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/reports.png" alt="Reports and downloads: the executive deck and each report as PDF, Word, Markdown or HTML"><br><b>Reports.</b> Every report as PDF, Word, Markdown or a web page, the deck as PowerPoint, the data as JSON, and a Brody bundle.</td>
+<td><img src="docs/screenshots/brightness.png" alt="The brightness control open at the Darkest level, with its five-stop slider"><br><b>Five brightness levels,</b> from Bright to Darkest, all checked for WCAG AA contrast.</td>
+</tr>
+<tr>
 <td><img src="docs/screenshots/home.png" alt="Home: upload files, a folder or a ZIP, import from GitHub, or open a Brody export"><br><b>Start</b> with files, a folder, a ZIP, a GitHub repository or a Brody export.</td>
+<td><img src="docs/screenshots/mobile.png" alt="The Overview on a phone-width screen" width="60%"><br><b>Works on a phone,</b> with the same content at 390 pixels wide.</td>
 </tr>
 </table>
+
+<sub>Screenshots are taken with <code>npm run screenshots</code> at a mix of brightness levels: half Dark or Darkest, a quarter Default and a quarter Bright.</sub>
 
 ## Quick start
 
@@ -83,7 +91,7 @@ The image (Node 24, non-root, all capabilities dropped) includes Ruff for Python
 
 ### Local
 
-Requires Node 24+ (optionally `ruff` and `python3` for Python analysis, and [Lean 4](https://lean-lang.org/install) for formal verification).
+Requires Node 24+ (optionally `ruff` and `python3` for Python analysis, and [Lean 4](https://lean-lang.org/install) for formal verification). Brody checks for Lean automatically; if it is missing, the home page offers **Add Lean**, which installs elan and the pinned Lean toolchain into `~/.elan` in one click. Lean installed with elan is found even when no elan default toolchain is set.
 
 ```bash
 npm install
@@ -191,6 +199,7 @@ Imported code is **untrusted data** and is never executed.
 * ZIPs are read in memory with entry-count, size and compression-ratio limits; `..`, absolute and drive paths are rejected and symlinks skipped.
 * Analyzers only parse: TypeScript syntax, ESLint with an embedded config (repository configs are JavaScript and are ignored), Python `ast` in isolated mode, Ruff `--isolated`, `gofmt -e`. `mypy` and `go vet` are deliberately not run because they load plugins or resolve modules. Subprocesses use no shell, a minimal environment and a timeout.
 * Lean source is written by a model that read untrusted code, so it is treated as hostile: every construct that can execute code or fake a proof is refused before Lean runs (`#eval` and every `#` command, `import`, `macro`/`syntax`/`elab`, `initialize`, `unsafe`, `extern`/`implemented_by`, `native_decide`, `IO`, `set_option`, `sorry`, `axiom`), and Lean runs with no inherited environment, a private temporary directory, a memory cap, a heartbeat limit and a hard kill. `FORMAL_SANDBOX` can add an isolation wrapper such as bubblewrap without network.
+* **Add Lean** only fetches elan's official installer and the pinned Lean toolchain, runs them without the server's environment (no API keys or tokens), and can only be started from Brody's own pages: cross-site and non-JSON requests are refused. It is not offered in Docker, where the image ships Lean.
 * Every repository-derived string sent to a model sits inside `<untrusted_repository_content>` tags with embedded delimiters neutralised; a test proves injected text stays inside.
 * Secrets are detected before model use and replaced with `[REDACTED_SECRET]`. GitHub tokens are only sent as an `Authorization` header, encrypted at rest with AES-256-GCM, scrubbed from logs and never returned by the API.
 * Exports escape all repository-derived content.
