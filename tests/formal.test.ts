@@ -10,6 +10,8 @@ import type { FindingDraft } from "@/lib/review/types";
 import { analyze, findPromptLine, freshDb, fromStrings, MockProvider, setAIProvider } from "./helpers";
 
 const lean = await findLean();
+// CI sets REQUIRE_LEAN so a missing toolchain fails the run instead of silently skipping the real-checker tests.
+if (!lean && process.env.REQUIRE_LEAN === "1") throw new Error("REQUIRE_LEAN=1 but no Lean 4 toolchain was found.");
 
 describe("Lean source policy", () => {
   it("refuses everything that can run code or fake a proof", () => {

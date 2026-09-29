@@ -91,7 +91,7 @@ The image (Node 24, non-root, all capabilities dropped) includes Ruff for Python
 
 ### Local
 
-Requires Node 24+ (optionally `ruff` and `python3` for Python analysis, and [Lean 4](https://lean-lang.org/install) for formal verification). Brody checks for Lean automatically; if it is missing, the home page offers **Add Lean**, which installs elan and the pinned Lean toolchain into `~/.elan` in one click. Lean installed with elan is found even when no elan default toolchain is set.
+Requires Node 24 LTS, the version CI and the Docker image use (`.nvmrc`; with Homebrew: `brew install node@24 && brew link --overwrite --force node@24`). Newer Node works, but its npm can write a `package-lock.json` that CI rejects: `npm run lockfile:check` tests it against CI's npm and `npm run lockfile:fix` rewrites it. Optional: `ruff` and `python3` for Python analysis, and [Lean 4](https://lean-lang.org/install) for formal verification. Brody checks for Lean automatically; if it is missing, the home page offers **Add Lean**, which installs elan and the pinned Lean toolchain into `~/.elan` in one click. Lean installed with elan is found even when no elan default toolchain is set.
 
 ```bash
 npm install

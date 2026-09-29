@@ -13,14 +13,21 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      # Before npm ci, so a lock file written by a different npm fails with the fix instead of a bare npm error.
+      - name: Lock file matches the npm bundled with Node 24
+        run: node scripts/lockfile.mjs check
       - run: pip install ruff
       - name: Lean 4 (formal verification tests run against the real checker)
         run: |
           curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --no-modify-path --default-toolchain leanprover/lean4:v4.34.0
+          # elan-init only records the default toolchain; install it now (Brody never runs elan's downloading proxy).
+          "$HOME/.elan/bin/elan" toolchain install leanprover/lean4:v4.34.0
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - run: npm ci
       # Types, lint (zero warnings), tests, both production builds (zero warnings) and the performance budgets.
       - run: npm run validate -- --quick
+        env:
+          REQUIRE_LEAN: "1" # fail, rather than skip, the formal tests if Lean is missing
       - name: End-to-end (bundled Chromium)
         run: |
           npx playwright install --with-deps chromium
