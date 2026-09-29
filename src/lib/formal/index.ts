@@ -319,7 +319,7 @@ async function verifyTarget(opts: { plan: FormalTargetPlan; id: string; provider
   // Audit what Lean proved. Without a passing audit nothing reaches the review as a fact.
   const proved = final.properties.filter((p) => outcomeOf.get(p.theorem)?.proved);
   let audit: z.infer<typeof FormalAuditSchema> | undefined;
-  if (proved.length && !opts.isCancelled?.()) audit = await tryAnalyze(provider, meter, { task: "formal:audit", system: SAFETY_PREAMBLE, prompt: auditPrompt(plan, final, proved), schema: FormalAuditSchema, maxTokens: 6000 });
+  if (proved.length && !opts.isCancelled?.()) audit = await tryAnalyze(provider, meter, { task: "formal:audit", system: SAFETY_PREAMBLE, prompt: auditPrompt(plan, final, proved), schema: FormalAuditSchema, maxTokens: 12000 });
   for (const p of properties) {
     if (!p.proved) continue;
     const a = audit?.properties.find((x) => x.theorem === p.theorem);

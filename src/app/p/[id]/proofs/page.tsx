@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
+import { LeanSetup } from "@/components/lean";
 import { Chip, Empty, ErrorBox, Loading, SectionTitle, SourceLink, Stat } from "@/components/ui";
 import { useApi } from "@/lib/client";
 import type { FormalProperty, FormalReport, FormalTarget, PropertyOutcome } from "@/lib/formal/types";
@@ -83,7 +84,10 @@ export default function ProofsPage() {
         The most complex and riskiest functions are modelled in Lean 4, and properties about them are checked by Lean&apos;s proof kernel. A result is used only when Lean proves it with nothing beyond its standard axioms, and an audit confirms that the model matches the source and that every counterexample reproduces on the original code. Defects proven here are exact: they come with the input that triggers them.
       </p>
       {!f ? <Empty title="No formal verification for this analysis">Re-analyse the project to run it.</Empty> : f.status === "skipped" ? (
-        <Empty title="Formal verification did not run">{f.reason}</Empty>
+        <>
+          <Empty title="Formal verification did not run">{f.reason}</Empty>
+          {/Lean/.test(f.reason ?? "") && <LeanSetup context="proofs" />}
+        </>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-4">

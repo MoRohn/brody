@@ -5,8 +5,8 @@ import { resolveModel } from "./settings";
 import { recordUsage } from "./usage";
 import { AIResponseError, type AIProvider, type AnalysisRequest, type AnalysisResult, type ModelOption } from "./types";
 
-interface ParsedMessage<T> {
-  parsed_output?: T | null;
+interface RawMessage {
+  content?: { type: string; text?: string }[];
   stop_reason?: string | null;
   stop_details?: { category?: string | null; explanation?: string | null } | null;
   usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null };
@@ -14,8 +14,9 @@ interface ParsedMessage<T> {
 }
 
 /**
- * Anthropic provider using structured outputs. The response is parsed against the request's
- * Zod schema by the SDK; a failed parse or truncated response is retried once, never more.
+ * Anthropic provider using structured outputs. The response is parsed here against the request's Zod schema
+ * (not by the SDK's `parse()`, which throws on an incomplete reply and so hides its stop reason and usage);
+ * a truncated or invalid response is retried once, never more, a truncated one with twice the output room.
  *
  * On Fable/Opus 5 tier models the server-side refusal fallback is requested by default. If the
  * API rejects those beta parameters, the provider disables them and uses the stable endpoint.
@@ -57,31 +58,41 @@ export class AnthropicProvider implements AIProvider {
     return out.sort((a, b) => (b.created ?? 0) - (a.created ?? 0));
   }
 
-  private async call<T>(request: AnalysisRequest<T>, prompt: string): Promise<ParsedMessage<T>> {
+  private async call<T>(request: AnalysisRequest<T>, prompt: string, maxTokens: number): Promise<{ msg: RawMessage; parsed: T | null; parseError?: string }> {
+    const format = zodOutputFormat(request.schema as never) as unknown as { type: "json_schema"; schema: Record<string, unknown>; parse: (text: string) => T };
     const base = {
       model: this.model,
-      max_tokens: request.maxTokens ?? 16000,
+      max_tokens: maxTokens,
       system: request.system,
       messages: [{ role: "user" as const, content: prompt }],
-      output_config: { format: zodOutputFormat(request.schema as never) },
+      output_config: { format: { type: format.type, schema: format.schema } },
     };
+    let msg: RawMessage | undefined;
     if (this.fallbacks) {
       try {
-        return (await this.client.beta.messages.parse({ ...base, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" } as never)) as unknown as ParsedMessage<T>;
+        msg = (await this.client.beta.messages.create({ ...base, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" } as never)) as unknown as RawMessage;
       } catch (e) {
         if (e instanceof Anthropic.BadRequestError && /fallback|beta|server-side/i.test(e.message)) this.fallbacks = false;
         else throw e;
       }
     }
-    return (await this.client.messages.parse(base as never)) as unknown as ParsedMessage<T>;
+    msg ??= (await this.client.messages.create(base as never)) as unknown as RawMessage;
+    const text = msg.content?.find((b) => b.type === "text")?.text;
+    if (text === undefined) return { msg, parsed: null, parseError: "no text in the response" };
+    try {
+      return { msg, parsed: format.parse(text) };
+    } catch (e) {
+      return { msg, parsed: null, parseError: e instanceof Error ? e.message : String(e) };
+    }
   }
 
   async analyze<T>(request: AnalysisRequest<T>): Promise<AnalysisResult<T>> {
     let prompt = request.prompt;
+    let maxTokens = request.maxTokens ?? 16000;
     let lastError = "";
     const usage = { inputTokens: 0, outputTokens: 0, calls: 0 };
     for (let attempt = 0; attempt < 2; attempt++) {
-      const msg = await this.call(request, prompt);
+      const { msg, parsed, parseError } = await this.call(request, prompt, maxTokens);
       usage.calls++;
       usage.inputTokens += msg.usage?.input_tokens ?? 0;
       usage.outputTokens += msg.usage?.output_tokens ?? 0;
@@ -91,12 +102,14 @@ export class AnthropicProvider implements AIProvider {
         throw new AIResponseError(`The model declined this request${msg.stop_details?.category ? ` (${msg.stop_details.category})` : ""}.`, msg.stop_details?.explanation ?? undefined);
       }
       if (msg.stop_reason === "max_tokens") {
+        // Output tokens include the model's thinking, so a reply can run out of room before its JSON is complete.
         lastError = "the response was truncated at the output token limit";
+        maxTokens = Math.min(maxTokens * 2, 32000);
         prompt = request.prompt + "\n\nYour previous answer was truncated. Return a shorter, complete answer that fits the schema.";
         continue;
       }
-      if (msg.parsed_output) return { data: msg.parsed_output, model: msg.model ?? this.model, provider: this.name, usage };
-      lastError = "the response did not match the required schema";
+      if (parsed !== null) return { data: parsed, model: msg.model ?? this.model, provider: this.name, usage };
+      lastError = `the response did not match the required schema (${(parseError ?? "").slice(0, 200)})`;
       prompt = `${request.prompt}\n\nYour previous answer was not valid for the required schema. Return only data that matches the schema exactly.`;
     }
     throw new AIResponseError(`Structured response could not be produced for task "${request.task}": ${lastError}.`);

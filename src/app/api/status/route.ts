@@ -4,6 +4,8 @@ import { guard, json } from "@/lib/api";
 import { checkProvider, providerStatus } from "@/lib/ai";
 import { resolveEmbeddingModel } from "@/lib/ai/settings";
 import { config } from "@/lib/config";
+import { findLean, leanUnavailableReason } from "@/lib/formal";
+import { canInstallLean, leanInstallState } from "@/lib/formal/install";
 import { runtimeKind } from "@/lib/runtime";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +31,14 @@ async function analyzers() {
   return value;
 }
 
+/** Formal verification readiness: whether Lean is usable, and whether Add Lean can install it here. */
+async function formal() {
+  if (!config.formal.enabled) return { enabled: false, lean: null, reason: "Disabled by FORMAL_VERIFICATION=off.", canInstall: false, install: leanInstallState() };
+  const lean = await findLean();
+  const can = canInstallLean();
+  return { enabled: true, lean: lean?.version ?? null, reason: lean ? undefined : leanUnavailableReason(), canInstall: !lean && can.ok, installBlocked: lean ? undefined : can.reason, install: leanInstallState() };
+}
+
 export async function GET(req: Request) {
   const check = new URL(req.url).searchParams.get("check");
   const ai = check ? await checkProvider(check === "force") : providerStatus();
@@ -39,5 +49,6 @@ export async function GET(req: Request) {
     github: { serverToken: !!config.github.token },
     limits: config.limits,
     analyzers: await analyzers(),
+    formal: await formal(),
   }));
 }

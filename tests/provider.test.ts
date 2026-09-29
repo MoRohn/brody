@@ -8,13 +8,14 @@ import { AIResponseError } from "@/lib/ai";
 
 const schema = z.object({ answer: z.string() });
 const req = { task: "t", system: "s", prompt: "p", schema };
-const ok = (parsed: unknown, extra: Record<string, unknown> = {}) => ({ parsed_output: parsed, stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5 }, model: "claude-opus-5", ...extra });
+// A raw Messages API reply whose text is `parsed` as JSON (null gives text that is not valid for the schema).
+const ok = (parsed: unknown, extra: Record<string, unknown> = {}) => ({ content: [{ type: "text", text: parsed === null ? "{}" : JSON.stringify(parsed) }], stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5 }, model: "claude-opus-5", ...extra });
 
 function fakeClient(handlers: { beta?: (p: Record<string, unknown>) => unknown; stable?: (p: Record<string, unknown>) => unknown }) {
   const calls = { beta: [] as Record<string, unknown>[], stable: [] as Record<string, unknown>[] };
   const client = {
-    beta: { messages: { parse: vi.fn(async (p: Record<string, unknown>) => { calls.beta.push(p); return handlers.beta?.(p); }) } },
-    messages: { parse: vi.fn(async (p: Record<string, unknown>) => { calls.stable.push(p); return handlers.stable?.(p); }), create: vi.fn(async () => ({})) },
+    beta: { messages: { create: vi.fn(async (p: Record<string, unknown>) => { calls.beta.push(p); return handlers.beta?.(p); }) } },
+    messages: { create: vi.fn(async (p: Record<string, unknown>) => { calls.stable.push(p); return handlers.stable?.(p); }) },
   } as unknown as Anthropic;
   return { client, calls };
 }
@@ -66,6 +67,27 @@ describe("AnthropicProvider", () => {
     const err = await new AnthropicProvider({ client: bad.client, model: "claude-sonnet-5" }).analyze(req).catch((e) => e);
     expect(err).toBeInstanceOf(AIResponseError);
     expect(bad.calls.stable).toHaveLength(2);
+  });
+
+  it("regression: a reply cut off mid-JSON is retried with more room and both calls are counted", async () => {
+    // The SDK's parse() threw on this before Brody could see stop_reason, so the retry never ran and usage was lost.
+    let n = 0;
+    const cut = fakeClient({ stable: () => (++n === 1 ? { ...ok(null, { stop_reason: "max_tokens" }), content: [{ type: "text", text: '{"answer":"unterminated' }] } : ok({ answer: "complete" })) });
+    const r = await new AnthropicProvider({ client: cut.client, model: "claude-sonnet-5" }).analyze({ ...req, maxTokens: 6000 });
+    expect(r.data.answer).toBe("complete");
+    expect(r.usage).toEqual({ inputTokens: 20, outputTokens: 10, calls: 2 });
+    expect(cut.calls.stable.map((c) => c.max_tokens)).toEqual([6000, 12000]);
+  });
+
+  it("sends the JSON schema, not the parser, and retries a reply that is valid JSON of the wrong shape", async () => {
+    let n = 0;
+    const wrong = fakeClient({ stable: () => (++n === 1 ? ok({ other: 1 }) : ok({ answer: "right" })) });
+    const r = await new AnthropicProvider({ client: wrong.client, model: "claude-sonnet-5" }).analyze(req);
+    expect(r.data.answer).toBe("right");
+    const format = (wrong.calls.stable[0].output_config as { format: Record<string, unknown> }).format;
+    expect(format.type).toBe("json_schema");
+    expect(format).not.toHaveProperty("parse");
+    expect(String((wrong.calls.stable[1].messages as { content: string }[])[0].content)).toContain("not valid for the required schema");
   });
 
   it("propagates authentication and other API errors unchanged", async () => {

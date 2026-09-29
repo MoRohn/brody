@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
+import { LeanSetup } from "@/components/lean";
 import { AISettings } from "@/components/ai-settings";
 import { Brand } from "@/components/Brand";
 import { StatusChip } from "@/components/project";
@@ -177,6 +178,7 @@ export default function Home() {
             <strong>AI is not configured.</strong> Deterministic analysis, static analyzers and the code map still run. Set <code>ANTHROPIC_API_KEY</code> or <code>OPENAI_API_KEY</code> in <code>.env</code> to add AI review and narrative documentation, then run <code>{status.data.runtime === "docker" ? "docker compose up -d" : "brody restart"}</code>. Choose the provider and model under the gear icon, <button type="button" className="underline" onClick={() => setAiOpen(true)}>AI settings</button>.
           </div>
         )}
+        {status.data?.ai.available && <LeanSetup context="home" />}
 
         {/* One section, two options. Each collapses independently and Upload starts open. Panels stay mounted so nothing typed is lost. */}
         <section className="card mt-6 overflow-hidden" aria-labelledby="select-h">

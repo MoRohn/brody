@@ -72,10 +72,21 @@ export interface LeanToolchain {
 
 let toolchain: Promise<LeanToolchain | null> | undefined;
 let unavailableReason = "";
+let missingSince = 0;
+/** A missing toolchain is looked for again after this long, so Lean installed while Brody runs is picked up. */
+const RECHECK_MS = 60_000;
 
-/** Find a usable Lean 4 toolchain once per process. Returns null (with `leanUnavailableReason`) when there is none. */
+/** Where elan keeps its toolchains (ELAN_HOME, else ~/.elan). */
+export function elanHome(): string {
+  return process.env.ELAN_HOME || path.join(os.homedir(), ".elan");
+}
+
+/** Find a usable Lean 4 toolchain, once per process when found. Returns null (with `leanUnavailableReason`) when there is none. */
 export function findLean(): Promise<LeanToolchain | null> {
-  if (!toolchain) toolchain = locate();
+  if (toolchain && missingSince && Date.now() - missingSince > RECHECK_MS) resetLean();
+  if (!toolchain) {
+    toolchain = locate().then((t) => { missingSince = t ? 0 : Date.now(); return t; });
+  }
   return toolchain;
 }
 
@@ -87,28 +98,105 @@ export function leanUnavailableReason(): string {
 export function resetLean(): void {
   toolchain = undefined;
   unavailableReason = "";
+  missingSince = 0;
+}
+
+const MIN_LEAN = [4, 12] as const;
+
+/** The version of a real `lean` binary, or null when it cannot be run. */
+async function leanVersion(bin: string): Promise<[number, number, number] | null> {
+  const ver = await run(bin, ["--version"], { timeoutMs: 30_000 });
+  const m = /version (\d+)\.(\d+)\.(\d+)/.exec(ver.stdout);
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+const tooOld = (v: [number, number, number]) => v[0] < MIN_LEAN[0] || (v[0] === MIN_LEAN[0] && v[1] < MIN_LEAN[1]);
+
+const LEAN_EXE = process.platform === "win32" ? "lean.exe" : "lean";
+
+/** elan's directory name for a toolchain: "leanprover/lean4:v4.34.0" -> "leanprover--lean4---v4.34.0". */
+const toolchainDir = (name: string) => name.replace(/:/g, "---").replace(/\//g, "--");
+
+/** The default toolchain from elan's settings.toml, if one is set. */
+async function elanDefault(): Promise<string | null> {
+  try {
+    const toml = await fsp.readFile(path.join(elanHome(), "settings.toml"), "utf8");
+    return /^\s*default_toolchain\s*=\s*"([^"]+)"/m.exec(toml)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Toolchains elan has fully installed: the default first, then the rest newest first. Read straight from ELAN_HOME
+ * rather than through elan's `lean` proxy, which downloads a missing default toolchain on first use and would
+ * stall a status check (or race Add Lean for elan's lock). Half-downloaded toolchains (.tmp, .lock) are skipped.
+ */
+async function installedToolchains(): Promise<{ bin: string; version: [number, number, number] }[]> {
+  let dirs: string[];
+  try {
+    dirs = (await fsp.readdir(path.join(elanHome(), "toolchains"))).filter((d) => !/\.(tmp|lock)$/.test(d));
+  } catch {
+    return [];
+  }
+  const found: { dir: string; bin: string; version: [number, number, number] }[] = [];
+  for (const dir of dirs) {
+    const bin = path.join(elanHome(), "toolchains", dir, "bin", LEAN_EXE);
+    const version = await leanVersion(bin);
+    if (version) found.push({ dir, bin, version });
+  }
+  const def = await elanDefault();
+  const isDefault = (d: string) => (def && d === toolchainDir(def) ? 1 : 0);
+  return found.sort((a, b) => isDefault(b.dir) - isDefault(a.dir) || b.version[0] - a.version[0] || b.version[1] - a.version[1] || b.version[2] - a.version[2]);
+}
+
+/** A `lean` on PATH that is a real Lean binary, not elan's proxy (which is elan itself under another name). */
+async function leanOnPath(): Promise<string | null> {
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter).filter(Boolean)) {
+    const candidate = path.join(dir, LEAN_EXE);
+    let real: string;
+    try {
+      real = await fsp.realpath(candidate);
+      await fsp.access(real, fsp.constants.X_OK);
+    } catch {
+      continue;
+    }
+    if (/^elan(\.exe)?$/.test(path.basename(real)) || path.dirname(real) === path.join(elanHome(), "bin")) return null;
+    return candidate;
+  }
+  return null;
 }
 
 async function locate(): Promise<LeanToolchain | null> {
-  const candidates = config.formal.leanBin ? [config.formal.leanBin] : ["lean", path.join(os.homedir(), ".elan", "bin", "lean")];
-  for (const c of candidates) {
-    // `--print-prefix` resolves the toolchain directory, so later runs call its binary directly.
-    // The elan proxy finds its toolchains through HOME or ELAN_HOME (set when elan lives outside the home directory).
-    const prefix = await run(c, ["--print-prefix"], { timeoutMs: 30_000, env: { HOME: os.homedir(), ...(process.env.ELAN_HOME ? { ELAN_HOME: process.env.ELAN_HOME } : {}) } });
-    if (prefix.code !== 0 || !prefix.stdout.trim()) continue;
-    const bin = path.join(prefix.stdout.trim(), "bin", process.platform === "win32" ? "lean.exe" : "lean");
-    const ver = await run(bin, ["--version"], { timeoutMs: 30_000 });
-    const m = /version (\d+)\.(\d+)\.(\d+)/.exec(ver.stdout);
-    if (!m) continue;
-    if (Number(m[1]) < 4 || (Number(m[1]) === 4 && Number(m[2]) < 12)) {
-      unavailableReason = `Lean ${m[1]}.${m[2]}.${m[3]} is too old; formal verification needs Lean 4.12 or newer.`;
-      continue;
+  const accept = async (bin: string): Promise<LeanToolchain | null> => {
+    const v = await leanVersion(bin);
+    if (!v) return null;
+    if (tooOld(v)) {
+      unavailableReason = `Lean ${v.join(".")} at ${bin} is too old; formal verification needs Lean ${MIN_LEAN.join(".")} or newer.`;
+      return null;
     }
-    return { bin, version: `${m[1]}.${m[2]}.${m[3]}` };
+    return { bin, version: v.join(".") };
+  };
+
+  if (config.formal.leanBin) {
+    // An explicit binary may be elan's proxy; `--print-prefix` resolves its toolchain so later runs call the real binary.
+    const prefix = await run(config.formal.leanBin, ["--print-prefix"], { timeoutMs: 30_000, env: { HOME: os.homedir(), ...(process.env.ELAN_HOME ? { ELAN_HOME: process.env.ELAN_HOME } : {}) } });
+    const found = prefix.code === 0 && prefix.stdout.trim() ? await accept(path.join(prefix.stdout.trim(), "bin", LEAN_EXE)) : null;
+    if (found) return found;
+    unavailableReason ||= `LEAN_BIN is set to ${config.formal.leanBin}, but it could not be run.`;
+    return null;
   }
-  unavailableReason ||= config.formal.leanBin
-    ? `LEAN_BIN is set to ${config.formal.leanBin}, but it could not be run.`
-    : "Lean 4 was not found. Install it with elan (https://lean-lang.org/install) or set LEAN_BIN to the lean binary.";
+
+  const onPath = await leanOnPath();
+  if (onPath) {
+    const found = await accept(onPath);
+    if (found) return found;
+  }
+  for (const t of await installedToolchains()) {
+    if (!tooOld(t.version)) return { bin: t.bin, version: t.version.join(".") };
+    unavailableReason ||= `Lean ${t.version.join(".")} is too old; formal verification needs Lean ${MIN_LEAN.join(".")} or newer.`;
+  }
+  unavailableReason ||= "Lean 4 was not found. Use Add Lean on the home page, install it with elan (https://lean-lang.org/install), or set LEAN_BIN to the lean binary.";
   return null;
 }
 
