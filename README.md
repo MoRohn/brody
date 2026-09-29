@@ -1,6 +1,9 @@
 <div align="center">
 
-# Brody
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/masthead-dark.svg">
+  <img src="docs/brand/masthead-light.svg" alt="Brody: repo intel and code review, bro" width="100%">
+</picture>
 
 **Repository intelligence for any codebase.**
 Evidence-backed code review, Lean 4 proofs of real defects, plain-language system explanations,
