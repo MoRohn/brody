@@ -76,7 +76,7 @@ The **Code Map** goes from functional areas to files to a single symbol, marks r
 
 ```bash
 cp .env.example .env        # optional: add ANTHROPIC_API_KEY or OPENAI_API_KEY to enable AI features
-docker compose up --build   # then open http://brody:3003
+docker compose up --build   # then open http://localhost:3003
 ```
 
 The image (Node 24, non-root, all capabilities dropped) includes Ruff for Python analysis and a Lean 4 toolchain for formal verification, and keeps its SQLite database in the `brody-data` volume.
@@ -87,11 +87,13 @@ Requires Node 24+ (optionally `ruff` and `python3` for Python analysis, and [Lea
 
 ```bash
 npm install
-cp .env.example .env        # optional
-npm run dev                 # http://brody:3003
+cp .env.example .env        # optional (.env.local works too and takes precedence)
+npm run dev                 # http://localhost:3003
 ```
 
-Brody answers at **http://brody:3003** and refuses other host names (`ALLOWED_HOSTS`). Make the name resolve once with `echo "127.0.0.1 brody" | sudo tee -a /etc/hosts`, or set `ALLOWED_HOSTS=` (empty) to turn the check off. Then upload `fixtures/sample-shop`, a small, deliberately flawed shop backend, to see the whole workflow.
+Open **http://localhost:3003**. Brody always answers on loopback (`localhost`, `127.0.0.1`, `[::1]`) and on the names in `ALLOWED_HOSTS` (default `brody`), and refuses any other host name to block DNS rebinding. To use **http://brody:3003**, make the name resolve once with `echo "127.0.0.1 brody" | sudo tee -a /etc/hosts`; set `ALLOWED_HOSTS=` (empty) to turn the check off, for example when reaching Brody from another machine by IP.
+
+Settings are read from the shell first, then `.env.local`, then `.env`, by `npm run dev`/`start`, the CLI scripts, `start brody` and Docker Compose alike, so `PORT` and `ALLOWED_HOSTS` can live in either file. Then upload `fixtures/sample-shop`, a small, deliberately flawed shop backend, to see the whole workflow.
 
 ### One command, in the background
 

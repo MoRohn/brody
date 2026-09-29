@@ -45,6 +45,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 python3
     && rm -rf /var/lib/apt/lists/* /root/.cache
 WORKDIR /app
 COPY --from=build --chown=node:node /app/package.json /app/next.config.ts ./
+COPY --from=build --chown=node:node /app/tools/serve.mjs ./tools/serve.mjs
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/.next ./.next
 COPY --from=build --chown=node:node /app/dist ./dist
@@ -57,5 +58,5 @@ USER node
 VOLUME ["/data"]
 EXPOSE 3003
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
-  CMD node -e "require('http').get({host:'127.0.0.1',port:process.env.PORT||3003,path:'/api/status',headers:{host:'brody'}},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+  CMD node -e "require('http').get({host:'127.0.0.1',port:process.env.PORT||3003,path:'/api/status'},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
 CMD ["npm", "run", "start"]

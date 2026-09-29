@@ -14,9 +14,19 @@ done
 ROOT="$(cd -P "$(dirname "$SOURCE")/.." && pwd)"
 cd "$ROOT" || exit 1
 
+# Settings come from the shell first, then .env.local, then .env (the same order the app uses).
+env_value() {
+  local f line
+  for f in .env.local .env; do
+    [ -f "$f" ] || continue
+    line="$(grep -E "^[[:space:]]*(export[[:space:]]+)?$1=" "$f" | tail -1)"
+    [ -n "$line" ] && { line="${line#*=}"; line="${line%\"}"; line="${line#\"}"; line="${line%\'}"; line="${line#\'}"; printf '%s' "$line"; return 0; }
+  done
+  return 1
+}
+PORT="${PORT:-$(env_value PORT)}"
 PORT="${PORT:-3003}"
 HOST_NAME="${BRODY_HOST:-brody}"
-URL="http://$HOST_NAME:$PORT"
 mkdir -p data
 PID_FILE="data/brody.pid"
 LOG_FILE="data/brody.log"
@@ -27,8 +37,8 @@ fail() { printf 'brody: %s\n' "$*" >&2; exit 1; }
 listener_pid() { lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1; }
 
 healthy() {
-  # The host check only answers to $HOST_NAME, so send that name explicitly; this works before /etc/hosts is set up.
-  curl -fsS -m 3 -H "Host: $HOST_NAME" "http://127.0.0.1:$PORT/api/status" >/dev/null 2>&1
+  # Loopback addresses always pass the host check, so this works before /etc/hosts is set up.
+  curl -fsS -m 3 "http://127.0.0.1:$PORT/api/status" >/dev/null 2>&1
 }
 
 needs_build() {
@@ -40,10 +50,6 @@ needs_build() {
 # Opens Brody in the default browser once it is ready. Skipped with --no-open or BRODY_OPEN=0; BRODY_BROWSER overrides the opener.
 open_browser() {
   [ "${BRODY_OPEN:-1}" = "0" ] && return 0
-  if ! name_resolves; then
-    say "Not opening the browser: '$HOST_NAME' does not resolve yet (see the note above), so the page would not load."
-    return 0
-  fi
   local opener="${BRODY_BROWSER:-}"
   if [ -z "$opener" ]; then
     if command -v open >/dev/null 2>&1; then opener="open"
@@ -52,11 +58,15 @@ open_browser() {
     else say "Open $URL in your browser."; return 0; fi
   fi
   # Load the home page once so the browser opens on a page that is already warm.
-  curl -fsS -m 10 -H "Host: $HOST_NAME" "http://127.0.0.1:$PORT/" >/dev/null 2>&1
+  curl -fsS -m 10 "http://127.0.0.1:$PORT/" >/dev/null 2>&1
   "$opener" "$URL" >/dev/null 2>&1 || say "Could not open a browser automatically. Open $URL yourself."
 }
 
 name_resolves() { dscacheutil -q host -a name "$HOST_NAME" 2>/dev/null | grep -q "127.0.0.1" || grep -qE "^[^#]*\b$HOST_NAME\b" /etc/hosts 2>/dev/null; }
+
+# http://brody:PORT once that name resolves, http://localhost:PORT until then (loopback is always allowed).
+URL="http://localhost:$PORT"
+name_resolves && URL="http://$HOST_NAME:$PORT"
 
 cmd_start() {
   start_server || return $?
@@ -83,7 +93,7 @@ start_server() {
   healthy || fail "Brody did not become ready in 30 seconds (see $LOG_FILE)"
 
   say "Brody is running: $URL"
-  name_resolves || say "Note: '$HOST_NAME' does not resolve yet. Run once:  echo \"127.0.0.1 $HOST_NAME\" | sudo tee -a /etc/hosts"
+  name_resolves || say "Tip: to use http://$HOST_NAME:$PORT instead, run once:  echo \"127.0.0.1 $HOST_NAME\" | sudo tee -a /etc/hosts"
 }
 
 cmd_stop() {
