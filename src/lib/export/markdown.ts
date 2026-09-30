@@ -6,6 +6,8 @@ import { buildBrief } from "../docs/brief";
 import type { DocReport, ExecutiveBrief, Statement } from "../docs/types";
 import { areaGraph, architectureDiagramText, architectureMermaid, changeImpact, erMermaid, graphToMermaid, legendText, loadModel, moduleGraph, repositoryTree, riskGlyph, treeToText, glyphFor, type RiskLevel } from "../map";
 import { formatBytes } from "../util/text";
+import { loadAssurance } from "../assurance";
+import { asSubsections, privacyParts, securityParts } from "../assurance/markdown";
 
 export interface ReportData {
   project: ProjectRow;
@@ -171,6 +173,22 @@ export function buildMarkdown(projectId: string, opts: { scope?: ReportScope; de
   sec("security", "Security Model", () => {  for (const s of docs.securityModel.paragraphs) out.push(`${para(s)}\n`);
   for (const b of docs.securityModel.bullets ?? []) out.push(`- ${para(b)}`);
   });
+  // The security assessment and PII review: one condensed section each in the main reports, and their own reports.
+  const needs = (keys: string[]) => SCOPES[scope].sections.some((k) => keys.includes(k));
+  if (needs(["assessment", "privacy", ...SCOPES.security.sections, ...SCOPES.privacy.sections])) {
+    const assurance = loadAssurance(projectId);
+    const sParts = securityParts(assurance.security, concise);
+    const pParts = privacyParts(assurance.privacy, concise);
+    sec("assessment", "Security Assessment", () => {
+      out.push("_A security view of the review: overall risk, attack surface, OWASP Top 10 coverage, controls and what to fix first. The **Security Assessment** report has the full detail._\n");
+      pushAll(out, asSubsections(sParts, concise ? ["sa-summary", "sa-owasp", "sa-controls", "sa-plan"] : undefined));
+    });
+    sec("privacy", "Privacy & PII Review", () => {
+      out.push("_What personal data the system holds, how it is protected, who receives it, and the privacy status. The **Privacy & PII Review** report has the full inventory._\n");
+      pushAll(out, asSubsections(pParts, concise ? ["pr-summary", "pr-inventory", "pr-controls", "pr-recs"] : undefined));
+    });
+    for (const p of [...sParts, ...pParts]) sec(p.key, p.title, () => pushAll(out, p.lines));
+  }
   sec("review", "Code Review", () => {  out.push(reviewSummary(findings, project, concise));
   const sorted = [...findings].sort((a, b) => SEV_ORDER.indexOf(a.severity) - SEV_ORDER.indexOf(b.severity) || a.code.localeCompare(b.code));
   if (concise) {

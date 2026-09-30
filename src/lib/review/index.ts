@@ -3,6 +3,7 @@ import type { FileChecks } from "../parse/types";
 import { runEslint, runGo, runPython, runTypeScriptSyntax, type AnalyzerStatus } from "../analysis/analyzers";
 import { scanText } from "../analysis/rules";
 import { structuralFindings } from "../analysis/structural";
+import { scanAssurance, type AssuranceScan } from "../assurance";
 import { config } from "../config";
 import { getDb, schema, projectRows } from "../db/client";
 import type { Architecture } from "../discover/types";
@@ -20,6 +21,8 @@ export * from "./types";
 export interface StaticReviewResult {
   drafts: FindingDraft[];
   analyzers: AnalyzerStatus[];
+  /** Controls, PII inventory and privacy findings, reused by the security and privacy assessments. */
+  assurance: AssuranceScan;
 }
 
 /** Deterministic analysis: pattern rules, language analyzers, structural checks. Never uses AI. */
@@ -42,6 +45,10 @@ export async function runStaticReview(projectId: string, arch: Architecture, che
   pushAll(drafts, structural);
   analyzers.push({ name: "brody-structure", status: "ran", detail: "Structural checks over the repository model (size, complexity, tests, operations, dependencies, secrets).", findings: structural.length });
 
+  const assurance = scanAssurance(files, arch);
+  pushAll(drafts, assurance.drafts);
+  analyzers.push({ name: "brody-privacy", status: "ran", detail: `Personal-data inventory (${assurance.inventory.length} field${assurance.inventory.length === 1 ? "" : "s"}), security and privacy controls, and privacy checks (password storage, sensitive fields, erasure, personal data in source).`, findings: assurance.drafts.length });
+
   if (config.staticAnalysis.enabled) {
     const tsr = runTypeScriptSyntax(files, checks);
     pushAll(drafts, tsr.findings);
@@ -58,7 +65,7 @@ export async function runStaticReview(projectId: string, arch: Architecture, che
   } else {
     analyzers.push({ name: "language-analyzers", status: "skipped", detail: "Disabled by STATIC_ANALYSIS=off.", findings: 0 });
   }
-  return { drafts: dedupe(drafts), analyzers };
+  return { drafts: dedupe(drafts), analyzers, assurance };
 }
 
 export interface FullReviewResult {
@@ -70,6 +77,7 @@ export interface FullReviewResult {
   analyzers: AnalyzerStatus[];
   /** Lean 4 formal verification of the most complex functions, with each proof linked to the finding it produced. */
   formal: FormalReport;
+  assurance: AssuranceScan;
 }
 
 /** The review's pipeline stages, in order. A stage that cannot run is reported with the reason. */
@@ -174,5 +182,6 @@ export async function runReview(opts: {
     ai: { ran: !!provider, passes, reviewedFiles, failures: meter.failures },
     analyzers: stat.analyzers,
     formal,
+    assurance: stat.assurance,
   };
 }

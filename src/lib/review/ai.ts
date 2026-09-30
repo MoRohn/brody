@@ -10,7 +10,7 @@ import { mapLimit } from "../util/concurrency";
 import { sliceLines } from "../util/text";
 import type { Category, Confidence, FindingDraft, Severity } from "./types";
 
-const CATEGORIES = ["Correctness", "Security", "Reliability", "Performance", "Maintainability", "API Design", "Data", "Testing", "Operations", "Architecture"] as const;
+const CATEGORIES = ["Correctness", "Security", "Reliability", "Performance", "Maintainability", "API Design", "Data", "Testing", "Operations", "Architecture", "Privacy"] as const;
 
 export const AiFindingSchema = z.object({
   findings: z.array(z.object({
@@ -45,6 +45,7 @@ export const REVIEW_PASSES: Pass[] = [
   { key: "performance-data", label: "Performance and data review", categories: ["Performance", "Data"], focus: "N+1 queries, repeated network or database calls, work inside loops, blocking calls on hot paths, unbounded memory growth, oversized payloads, missing pagination, schema problems, unsafe migrations, missing constraints or indexes, data-loss risks, inconsistent types." },
   { key: "architecture-api", label: "Architecture and API design review", categories: ["Architecture", "API Design", "Maintainability"], focus: "Layering violations, tight coupling, circular dependencies, duplicated logic, unclear abstractions, inconsistent API response shapes, wrong status codes, missing input validation, missing pagination, breaking-change risk, error contract inconsistencies. Only report concrete, evidenced structural problems." },
   { key: "testing-ops", label: "Testing and operations review", categories: ["Testing", "Operations"], focus: "Critical behaviour with no failure-path tests, brittle tests, missing observability (logs, metrics, health checks), startup and shutdown behaviour, unvalidated configuration, missing timeouts on outbound calls." },
+  { key: "privacy", label: "Privacy and personal data review", categories: ["Privacy"], focus: "How personal data (names, e-mail addresses, phone numbers, addresses, dates of birth, government IDs, payment, health or biometric data, IP addresses, precise location) is handled: personal data or credentials written to logs, error reports or analytics; returned in API responses beyond what the caller needs (password hashes, other users' records, full objects serialised); sent to third parties (AI prompts, analytics, e-mail, CRM) without minimisation; placed in URLs; stored without protection where it is highly sensitive; kept with no deletion path; collected without a visible purpose. Only report concrete handling shown in the code, and name the personal-data fields involved." },
 ];
 
 export interface ReviewUnit {
@@ -93,7 +94,7 @@ export function selectReviewFiles(files: LoadedFile[], arch: Architecture, max =
     let s = f.importance;
     if (routeFiles.has(f.path)) s += 0.5;
     if (f.role === "api" || f.role === "data" || f.role === "entry") s += 0.25;
-    if (/(auth|payment|billing|session|token|crypto|admin|upload|webhook|checkout|password|permission|sql|query|exec)/i.test(f.path)) s += 0.35;
+    if (/(auth|payment|billing|session|token|crypto|admin|upload|webhook|checkout|password|permission|sql|query|exec|user|account|customer|profile|patient|member|privacy|consent)/i.test(f.path)) s += 0.35;
     if (secretFiles.has(f.path)) s += 0.2;
     if (f.lines < 8) s -= 0.5;
     return s;

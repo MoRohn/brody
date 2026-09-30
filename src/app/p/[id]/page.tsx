@@ -16,6 +16,7 @@ interface Overview {
   atAGlance: { area: string; description: string }[];
   architecture: Pick<Architecture, "pattern" | "applicationType" | "stack" | "stats" | "layers" | "entryPoints"> & { externalServices: { name: string; category: string; purpose: string }[] } | null;
   review: { total: number; bySeverity: Record<string, number>; byCategory: Record<string, number>; byOrigin: Record<string, number>; byVerification: Record<string, number>; top: { id: string; code: string; title: string; severity: string; category: string; origin: string; verification: string; filePath: string | null; startLine: number | null }[]; testing: string[]; security: string[]; risks: string[] };
+  assurance: { rating: string; security: string[]; owaspIssues: string[]; privacy: string; privacyReasons: string[]; piiFields: number; special: number } | null;
   pipeline: { analyzers?: { name: string; status: string; detail: string; findings: number }[]; usage?: { inputTokens: number; outputTokens: number; calls: number }; aiFailures?: { task: string; error: string }[]; ai?: { ran: boolean; passes: { label: string; calls: number; findings: number; failed: number }[]; reviewedFiles: number } } | null;
   inventory: { total: number; included: number; excluded: number; binary: number; large: number; duplicates: number; tests: number; generated: number } | null;
   docMeta: { aiUsed: boolean; model?: string; notes: string[]; droppedUngrounded: number; aiSections: number } | null;
@@ -140,6 +141,23 @@ export default function OverviewPage() {
           <div key={title as string} className="card p-3"><div className="h-label mb-1">{title as string}</div>{(paras as string[]).slice(0, 3).map((t, i) => <p key={i} className="mb-1.5 text-[13px]">{t}</p>)}</div>
         ))}
       </div>
+
+      {data.assurance && (
+        <>
+          <SectionTitle right={<Link href={`/p/${id}/security`} className="text-sm">Open Security &amp; Privacy →</Link>}>Security and privacy</SectionTitle>
+          <div className="grid gap-3 md:grid-cols-2" data-testid="assurance-summary">
+            <div className="card p-3">
+              <div className="flex flex-wrap items-center gap-2"><span className="h-label">Overall security risk</span><Chip tone={["Critical", "High"].includes(data.assurance.rating) ? "danger" : data.assurance.rating === "Elevated" ? "warn" : data.assurance.rating === "Low" ? "ok" : "info"}>{data.assurance.rating}</Chip></div>
+              {data.assurance.security.map((t, i) => <p key={i} className="mt-1.5 text-[13px]">{t}</p>)}
+              {data.assurance.owaspIssues.length > 0 && <p className="mt-1.5 text-xs text-muted">OWASP Top 10 categories with issues: {data.assurance.owaspIssues.join(", ")}</p>}
+            </div>
+            <div className="card p-3">
+              <div className="flex flex-wrap items-center gap-2"><span className="h-label">Personal data (PII)</span><Chip tone={data.assurance.privacy === "High exposure" ? "danger" : data.assurance.privacy === "Needs attention" ? "warn" : data.assurance.privacy === "Controls in place" ? "ok" : "neutral"}>{data.assurance.privacy}</Chip></div>
+              {data.assurance.privacyReasons.map((t, i) => <p key={i} className="mt-1.5 text-[13px]">{t}</p>)}
+            </div>
+          </div>
+        </>
+      )}
 
       <SectionTitle>How this analysis was produced</SectionTitle>
       <div className="grid gap-4 lg:grid-cols-2">

@@ -14,6 +14,7 @@ import { api, useApi } from "@/lib/client";
 const NAV: { slug: string; label: string; icon: IconName }[] = [
   { slug: "", label: "Overview", icon: "overview" },
   { slug: "review", label: "Code Review", icon: "review" },
+  { slug: "security", label: "Security & Privacy", icon: "lock" },
   { slug: "proofs", label: "Formal Proofs", icon: "proof" },
   { slug: "explain", label: "System Explanation", icon: "explain" },
   { slug: "architecture", label: "Architecture", icon: "architecture" },

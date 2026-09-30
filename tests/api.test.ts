@@ -107,16 +107,16 @@ describe("API: valid requests", () => {
 
   it("exports Markdown in the required section order, HTML (escaped) and JSON with every layer", async () => {
     const md = (await body(await exportRoute(req("/api/x?format=md"), ctx(pid)))).text;
-    const order = Array.from({ length: 19 }, (_, i) => md.indexOf(`## ${i + 1}. `));
+    const order = Array.from({ length: 21 }, (_, i) => md.indexOf(`## ${i + 1}. `));
     expect(order.every((x) => x >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    expect(md).toContain("## 18. Detailed Code Map");
+    expect(md).toContain("## 20. Detailed Code Map");
     for (const t of ["### 1. Repository Tree", "### 2. Functional Component Map", "### 3. Runtime / Data Flow Map", "### 4. Dependency Map", "### 5. API Map", "### 6. Data Model Map", "### 7. Test Map", "### 8. External Integration Map", "### 9. High-Risk Component Map", "### 10. Change Impact Relationships", "### 11. Legend"]) expect(md).toContain(t);
     expect(md.trimEnd().endsWith("```")).toBe(true);
     expect(md).toContain("● Application Entry Point");
     expect(md).not.toContain("AKIAJ4Q7ZK3M2WXN5PTB");
     const json = JSON.parse((await body(await exportRoute(req("/api/x?format=json"), ctx(pid)))).text);
-    expect(Object.keys(json)).toEqual(["project", "architecture", "files", "symbols", "relationships", "findings", "documentation", "flows", "dependencies", "metadata"]);
+    expect(Object.keys(json)).toEqual(["project", "architecture", "files", "symbols", "relationships", "findings", "documentation", "securityAssessment", "privacyReview", "flows", "dependencies", "metadata"]);
     expect(JSON.stringify(json)).not.toContain("AKIAJ4Q7ZK3M2WXN5PTB");
     const html = await exportRoute(req("/api/x?format=html"), ctx(pid));
     expect(html.headers.get("content-type")).toContain("text/html");

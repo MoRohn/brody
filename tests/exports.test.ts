@@ -44,11 +44,12 @@ describe("scoped reports", () => {
   it("numbers sections sequentially within each scope and keeps the required order in the full report", () => {
     const full = buildMarkdown(pid);
     const order = [...full.matchAll(/^## (\d+)\. (.+)$/gm)];
-    expect(order.map((m) => Number(m[1]))).toEqual(Array.from({ length: 19 }, (_, i) => i + 1));
+    expect(order.map((m) => Number(m[1]))).toEqual(Array.from({ length: 21 }, (_, i) => i + 1));
     expect(order[0][2]).toBe("Executive Summary");
-    expect(order[17][2]).toBe("Detailed Code Map");
-    expect(order[18][2]).toBe("Legend");
-    for (const scope of ["review", "explain", "architecture", "map", "ask"] as ReportScope[]) {
+    expect(order.slice(11, 14).map((m) => m[2])).toEqual(["Security Model", "Security Assessment", "Privacy & PII Review"]);
+    expect(order[19][2]).toBe("Detailed Code Map");
+    expect(order[20][2]).toBe("Legend");
+    for (const scope of ["review", "security", "privacy", "explain", "architecture", "map", "ask"] as ReportScope[]) {
       const md = buildMarkdown(pid, { scope });
       expect(md.startsWith(`# ${SCOPES[scope].title}`)).toBe(true);
       expect([...md.matchAll(/^## (\d+)\./gm)][0]?.[1]).toBe("1");
@@ -72,7 +73,7 @@ describe("PDF export", () => {
     expect(buf.subarray(-8).toString()).toContain("%%EOF");
     const { pages, text, outline } = await pdfText(buf);
     expect(pages).toBeGreaterThan(10);
-    expect(outline).toBe(20); // 19 sections plus the executive slides
+    expect(outline).toBe(22); // 21 sections plus the executive slides
     expect(text).toContain("Repository Intelligence Report");
     expect(text).toContain("Contents");
     for (const t of ["Executive Summary", "Code Review", "Detailed Code Map", "Legend", "POST /api/orders", "SEC-", "createOrder", "At a glance", "Key points", "Health and risk", "Recommended next steps"]) expect(text).toContain(t);

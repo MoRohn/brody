@@ -7,6 +7,7 @@ import { buildMarkdown, isScope, loadReportData, SCOPES, type ReportScope } from
 import { renderPdf } from "./pdf";
 
 import { buildBrief } from "../docs/brief";
+import { loadAssurance } from "../assurance";
 export { buildMarkdown, isScope, SCOPES, type ReportScope } from "./markdown";
 export { buildHtmlDocument } from "./html";
 
@@ -31,6 +32,7 @@ export function buildHtml(projectId: string, opts: { print?: boolean; scope?: Re
 /** Structured export with every layer of the repository model. */
 export function buildJson(projectId: string): Record<string, unknown> {
   const { project, arch, docs, findings } = loadReportData(projectId);
+  const assurance = loadAssurance(projectId);
   const files = projectRows(schema.files, projectId);
   const symbols = projectRows(schema.symbols, projectId);
   const relationships = projectRows(schema.relationships, projectId);
@@ -44,6 +46,8 @@ export function buildJson(projectId: string): Record<string, unknown> {
     relationships: relationships.map((r) => ({ kind: r.kind, sourceType: r.sourceType, sourceId: r.sourceId, targetType: r.targetType, targetId: r.targetId, file: r.filePath, line: r.line, confidence: r.confidence })),
     findings: findings.map(({ projectId: _p, ...f }) => f),
     documentation: docs,
+    securityAssessment: assurance.security,
+    privacyReview: assurance.privacy,
     flows: arch.flows,
     dependencies: { external: arch.dependencies, services: arch.externalServices, internalAreas: arch.areas.map((a) => ({ name: a.name, dependsOn: a.dependsOn, usedBy: a.usedBy })) },
     metadata: { exportedAt: new Date().toISOString(), generator: "brody", analysis: pipeline.pipeline ?? null, inventory: pipeline.inventory ?? null, ai: docs.meta },

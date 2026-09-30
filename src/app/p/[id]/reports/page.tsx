@@ -4,11 +4,13 @@ import { FormatRow } from "@/components/download";
 import { DeckFormatRow } from "@/components/deck";
 import { SCOPES, type ReportScope } from "@/lib/export/scopes";
 
-const ORDER: ReportScope[] = ["full", "complete", "review", "explain", "architecture", "map", "ask"];
+const ORDER: ReportScope[] = ["full", "complete", "review", "security", "privacy", "explain", "architecture", "map", "ask"];
 const FOR: Record<ReportScope, ("pdf" | "docx" | "md" | "html" | "json" | "print" | "bundle")[]> = {
   full: ["pdf", "docx", "md", "html", "json", "bundle"],
   complete: ["pdf", "docx", "md", "html"],
   review: ["pdf", "docx", "md", "html"],
+  security: ["pdf", "docx", "md", "html"],
+  privacy: ["pdf", "docx", "md", "html"],
   explain: ["pdf", "docx", "md", "html"],
   architecture: ["pdf", "docx", "md", "html"],
   map: ["pdf", "docx", "md", "html"],

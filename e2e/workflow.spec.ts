@@ -102,8 +102,8 @@ test("import → analyze → review → explain → map → explore → ask → 
     expect(await res.text()).toContain(needle);
   }
   const md = await (await page.request.get(`/api/projects/${pid}/export?format=md`)).text();
-  expect(md.indexOf("## 1. Executive Summary")).toBeLessThan(md.indexOf("## 18. Detailed Code Map"));
-  expect(md).toContain("## 19. Legend");
+  expect(md.indexOf("## 1. Executive Summary")).toBeLessThan(md.indexOf("## 20. Detailed Code Map"));
+  expect(md).toContain("## 21. Legend");
 
   // Downloads: PDF, Word and Markdown from the header menu, the overview banner and the Reports page
   await page.goto(base);
@@ -117,7 +117,7 @@ test("import → analyze → review → explain → map → explore → ask → 
   expect(docx.bytes.subarray(0, 2).toString()).toBe("PK");
   const mdFile = await grab("dl-md-full");
   expect(mdFile.name).toBe("CODEBASE_REPORT.md");
-  expect(mdFile.bytes.toString()).toContain("## 18. Detailed Code Map");
+  expect(mdFile.bytes.toString()).toContain("## 20. Detailed Code Map");
   await page.getByTestId("download-menu-full").click();
   await expect(page.getByRole("menu", { name: /Repository Intelligence Report downloads/ })).toBeVisible();
   // "View" opens the PDF in a new tab. Chrome shows it, but headless Chromium downloads it instead and the tab never

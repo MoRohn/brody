@@ -1,11 +1,11 @@
 export type Severity = "Critical" | "High" | "Medium" | "Low" | "Informational";
 export type Confidence = "High" | "Medium" | "Low";
-export type Category = "Correctness" | "Security" | "Reliability" | "Performance" | "Maintainability" | "API Design" | "Data" | "Testing" | "Operations" | "Architecture" | "Dependencies";
+export type Category = "Correctness" | "Security" | "Reliability" | "Performance" | "Maintainability" | "API Design" | "Data" | "Testing" | "Operations" | "Architecture" | "Dependencies" | "Privacy";
 export type Verification = "verified" | "needs_verification" | "rejected";
 
 export const CATEGORY_PREFIX: Record<Category, string> = {
   Correctness: "COR", Security: "SEC", Reliability: "REL", Performance: "PERF", Maintainability: "MNT",
-  "API Design": "API", Data: "DAT", Testing: "TST", Operations: "OPS", Architecture: "ARC", Dependencies: "DEP",
+  "API Design": "API", Data: "DAT", Testing: "TST", Operations: "OPS", Architecture: "ARC", Dependencies: "DEP", Privacy: "PRV",
 };
 
 export interface FindingDraft {

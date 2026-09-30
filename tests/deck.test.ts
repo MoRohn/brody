@@ -144,7 +144,7 @@ describe("executive deck: rating and scorecard", () => {
     expect(content.scorecard.map((d) => d.key)).toEqual(["security", "reliability", "quality", "maintain", "ops", "delivery"]);
     const { findings } = loadReportData(pid);
     const sec = content.scorecard.find((d) => d.key === "security")!;
-    expect(sec.sev.critical + sec.sev.high + sec.sev.medium + sec.sev.low).toBe(findings.filter((f) => f.category === "Security" && ["Critical", "High", "Medium", "Low"].includes(f.severity)).length);
+    expect(sec.sev.critical + sec.sev.high + sec.sev.medium + sec.sev.low).toBe(findings.filter((f) => (f.category === "Security" || f.category === "Privacy") && ["Critical", "High", "Medium", "Low"].includes(f.severity)).length);
     expect(sec.status).toBe(sec.sev.critical > 0 ? "act" : sec.sev.high > 0 || sec.sev.medium >= 3 ? "watch" : "good");
     for (const d of content.scorecard) expect(d.evidence.length, d.key).toBeGreaterThan(5);
     const text = slideText(deckSlides(pid).slides.find((x) => x.id === "scorecard")!).join(" ");
@@ -344,7 +344,7 @@ describe("executive deck: the report is unchanged", () => {
   it("does not mention the deck and keeps its own sections, numbering and content", () => {
     const md = buildMarkdown(pid);
     expect(md.toLowerCase()).not.toContain("executive deck");
-    expect([...md.matchAll(/^## (\d+)\. /gm)].length).toBe(19);
+    expect([...md.matchAll(/^## (\d+)\. /gm)].length).toBe(21);
     expect(md).toContain("## 1. Executive Summary");
     const { findings } = loadReportData(pid);
     expect(projectRows(schema.findings, pid).filter((f) => f.verification !== "rejected").length).toBe(findings.length);

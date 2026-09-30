@@ -64,7 +64,7 @@ export interface DeckContent {
 const SECTION_TITLES: Record<string, string> = {
   exec: "Executive Summary", glance: "System at a Glance", arch: "Architecture Overview", runtime: "Primary Runtime Flow", areas: "Major Functional Areas",
   flows: "Data Flow", api: "API Architecture", data: "Data Architecture", integrations: "External Integrations", infra: "Infrastructure & Deployment",
-  testing: "Testing Strategy", security: "Security Model", review: "Code Review", risks: "Engineering Risks", files: "File & Component Explanations",
+  testing: "Testing Strategy", security: "Security Model", assessment: "Security Assessment", privacy: "Privacy & PII Review", review: "Code Review", risks: "Engineering Risks", files: "File & Component Explanations",
   symbols: "Detailed Symbol Explanations", recs: "Recommendations", codemap: "Detailed Code Map", legend: "Legend",
 };
 export const reportRefs = (): DeckContent["refs"] => SCOPES.full.sections.map((key, i) => ({ key, n: i + 1, title: SECTION_TITLES[key] ?? key }));
@@ -251,7 +251,7 @@ export function buildDeckContent(projectId: string): DeckContent {
 
   // ---- health scorecard: six dimensions an executive asks about, each rated from the same findings the report lists -------
   const DIMENSIONS: { key: string; name: string; categories: string[] }[] = [
-    { key: "security", name: "Security and data protection", categories: ["Security"] },
+    { key: "security", name: "Security and data protection", categories: ["Security", "Privacy"] },
     { key: "reliability", name: "Reliability", categories: ["Reliability", "Correctness", "Data"] },
     { key: "quality", name: "Quality assurance", categories: ["Testing"] },
     { key: "maintain", name: "Maintainability", categories: ["Maintainability", "Architecture", "API Design"] },

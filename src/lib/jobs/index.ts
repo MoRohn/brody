@@ -14,6 +14,7 @@ import { architectureDiagramText, architectureMermaid, erMermaid, legendText, re
 import { buildSearchIndex } from "../retrieval";
 import { buildDeckContent, layoutDeck, saveDeckContent } from "../deck";
 import { runReview } from "../review";
+import { buildAssurance, saveAssurance } from "../assurance";
 import { AppError } from "../util/errors";
 import { newId } from "../util/ids";
 import { initialStages, STAGE_DEFS } from "./stages";
@@ -238,6 +239,8 @@ async function runJob(jobId: string, ledger: UsageLedger): Promise<void> {
     // The formal report (Lean source, theorems, audit notes) is kept with the analysis so the review can show each proof.
     const withFormal = db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get()!;
     db.update(schema.projects).set({ analysis: { ...(withFormal.analysis ?? {}), formal: review.formal }, updatedAt: Date.now() }).where(eq(schema.projects.id, projectId)).run();
+    // The security assessment and PII review are views of the same findings, built once and kept with the analysis.
+    saveAssurance(projectId, buildAssurance(projectId, arch, { scan: review.assurance, pipeline: { analyzers: review.analyzers, ai: review.ai }, formal: review.formal }));
     if (review.formal.status === "ran") {
       const f = review.formal.totals;
       t.detail("formal", `${f.checked} of ${f.targets} functions modelled in Lean ${review.formal.lean}; ${f.proved} theorems proved: ${f.defects} defects proven by counterexample, ${f.guarantees} guarantees, ${f.claimsConfirmed} review claims confirmed and ${f.claimsRefuted} refuted${f.disputed ? `; ${f.disputed} proofs set aside by the fidelity audit` : ""}`);

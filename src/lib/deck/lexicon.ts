@@ -75,7 +75,18 @@ const RULE_TEXT: Record<string, Issue> = {
   "php-extract": R("Outside data can overwrite internal settings", "Read outside data explicitly and safely"),
   "rust-unsafe": R("Low-level code that bypasses safety checks", "Review and minimise unsafe code"),
   "rust-unwrap": R("Failures can stop the system abruptly", "Handle failures gracefully"),
+  "pii-logging": R("Customers' personal details written to logs", "Keep personal details out of logs"),
+  "pii-in-url": R("Personal details exposed in web addresses", "Keep personal details out of web addresses"),
 };
+
+/** Privacy checks share one analyzer name, so they are recognised by what they report. */
+const PRIVACY_TEXT: [RegExp, Issue][] = [
+  [/password/i, R("Passwords are not stored safely", "Store passwords only as secure hashes")],
+  [/security code/i, R("Card security codes are kept, which card rules forbid", "Stop storing card security codes")],
+  [/without field-level encryption/i, R("The most sensitive personal data is not encrypted", "Encrypt the most sensitive personal data")],
+  [/delete a person/i, R("No way to delete a customer's data on request", "Add a way to delete a customer's data")],
+  [/personal data written into/i, R("Real personal data kept in the code", "Remove real personal data from the code")],
+];
 
 /** The structural checks share one analyzer name, so they are recognised by what they report. */
 const TITLE_TEXT: [RegExp, Issue][] = [
@@ -104,6 +115,7 @@ const CATEGORY_TEXT: Record<string, Issue> = {
   Operations: R("An operational gap", "Close the operational gap"),
   Architecture: R("A structural weakness", "Address the structural weakness"),
   Dependencies: R("A risk in third-party components", "Update or replace risky components"),
+  Privacy: R("A risk to customers' personal data", "Tighten how personal data is handled"),
 };
 
 export interface FindingLike { analyzer?: string | null; title: string; category: string; businessImpact?: string | null; whyItMatters?: string | null }
@@ -112,6 +124,7 @@ export interface FindingLike { analyzer?: string | null; title: string; category
 export function issueFor(f: FindingLike): Issue {
   const rule = f.analyzer?.startsWith("brody-rules/") ? f.analyzer.slice("brody-rules/".length) : undefined;
   if (rule && RULE_TEXT[rule]) return RULE_TEXT[rule];
+  if (f.analyzer === "brody-privacy") for (const [re, t] of PRIVACY_TEXT) if (re.test(f.title)) return t;
   if (f.analyzer === "brody-structure") for (const [re, t] of TITLE_TEXT) if (re.test(f.title)) return t;
   if (f.analyzer === "typescript" || f.analyzer === "python-ast" || f.analyzer === "gofmt") return R("Code that cannot be built or run", "Repair the code that fails to build");
   if (f.analyzer?.startsWith("eslint/") || f.analyzer?.startsWith("ruff/")) return R("A likely defect in the code", "Correct the likely defects");
@@ -160,6 +173,7 @@ const EXPOSURE_BY_CATEGORY: Record<string, string> = {
   Maintainability: "Changes take longer and cost more over time.",
   Performance: "Customers may see slower responses under load.",
   Reliability: "Failures may go unnoticed and affect customers.",
+  Privacy: "Customers' personal data could be exposed, with notification duties and fines.",
 };
 
 export const THEME: Record<string, string> = {
@@ -174,6 +188,7 @@ export const THEME: Record<string, string> = {
   Operations: "Operational readiness",
   Architecture: "Structure",
   Dependencies: "Third-party components",
+  Privacy: "Security and data protection",
 };
 export const themeFor = (category: Category | string): string => THEME[category] ?? category;
 

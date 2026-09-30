@@ -3,6 +3,7 @@ import { getProject, guard, json, projectSummary } from "@/lib/api";
 import { explainAIError, providerStatus } from "@/lib/ai";
 import { getDb, schema } from "@/lib/db/client";
 import type { Architecture } from "@/lib/discover/types";
+import { loadAssurance } from "@/lib/assurance";
 import { buildBrief } from "@/lib/docs/brief";
 import type { DocReport } from "@/lib/docs/types";
 
@@ -37,6 +38,12 @@ export async function GET(_req: Request, { params }: Ctx) {
         bySeverity: count((f) => f.severity), byCategory: count((f) => f.category), byOrigin: count((f) => f.origin), byVerification: count((f) => f.verification), top,
         testing: docs?.testing.paragraphs.map((p) => p.text) ?? [], security: docs?.securityModel.paragraphs.map((p) => p.text) ?? [], risks: docs?.risks.paragraphs.map((p) => p.text) ?? [],
       },
+      assurance: (() => {
+        try {
+          const a = loadAssurance(id);
+          return { rating: a.security.rating, security: a.security.rationale.slice(0, 2), owaspIssues: a.security.owasp.filter((o) => o.status === "issues").map((o) => `${o.id} ${o.name}`), privacy: a.privacy.status, privacyReasons: a.privacy.rationale.slice(0, 2), piiFields: a.privacy.counts.fields, special: a.privacy.counts.special };
+        } catch { return null; }
+      })(),
       pipeline: analysis.pipeline ?? null,
       inventory: analysis.inventory ?? null,
       docMeta: docs?.meta ?? null,
