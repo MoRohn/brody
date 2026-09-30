@@ -29,6 +29,8 @@ const JS = ["TypeScript", "JavaScript"];
 
 export const RULES: Rule[] = [
   { id: "eval", codeOnly: true, title: "Dynamic code evaluation with eval()", category: "Security", severity: "High", confidence: "High", languages: [...JS, "Python", "Ruby", "PHP"], pattern: /(?<![.\w])eval\s*\(\s*(?!['"`][^'"`]*['"`]\s*\))/,
+    // A method or function *named* eval (an expression evaluator's own walker) is a declaration, not a call.
+    suppress: (l) => /\b(?:def|function\s*\*?)\s*eval\s*\(/.test(l) || /^\s*(?:(?:public|private|protected|static|async|override)\s+)*eval\s*\([^()]*\)\s*(?::[^=;{]+[{;]|\{)\s*$/.test(l),
     whatHappens: "The code passes a runtime value to eval(), which executes it as program code.", whyItMatters: "If any part of that value is influenced by a user or an external system, an attacker can run arbitrary code with the application's privileges.", businessImpact: "Potential full compromise of the server or user session, with exposure of customer data.", remediation: "Replace eval() with a safe parser (JSON.parse, ast.literal_eval) or an explicit dispatch table of permitted operations." },
   { id: "new-function", codeOnly: true, title: "Dynamic code construction with new Function()", category: "Security", severity: "High", confidence: "Medium", languages: JS, pattern: /new\s+Function\s*\(/,
     whatHappens: "A function body is assembled from a string at runtime.", whyItMatters: "This has the same injection risk as eval() whenever the string contains untrusted data.", remediation: "Use static functions or a lookup table of allowed handlers instead of compiling strings." },

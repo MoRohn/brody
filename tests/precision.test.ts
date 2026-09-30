@@ -44,6 +44,13 @@ describe("rule precision: code, not strings, comments, regexes or tests", () => 
     expect(ids("TypeScript", "run(); // never call eval(x) here")).not.toContain("eval");
     expect(ids("TypeScript", "const v = eval(userInput);")).toContain("eval");
   });
+  it("does not flag a method or function that is merely named eval", () => {
+    expect(ids("TypeScript", "class E {\n  eval(ast: ExprAst, env: Env | undefined): JsonValue {\n    return this.eval(ast.left, env);\n  }\n}")).not.toContain("eval");
+    expect(ids("TypeScript", "interface Evaluator {\n  eval(ast: Ast): Value;\n}")).not.toContain("eval");
+    expect(ids("Python", "class E:\n    def eval(self, node):\n        return 1", "src/x.py")).not.toContain("eval");
+    expect(ids("TypeScript", "eval(code);")).toContain("eval");
+    expect(ids("TypeScript", "  eval(payload)")).toContain("eval");
+  });
   it("distinguishes RegExp.exec from shell exec", () => {
     expect(ids("TypeScript", "const m = re.exec(line);")).not.toContain("child-process-exec");
     expect(ids("TypeScript", "const m = /a/.exec(text);")).not.toContain("child-process-exec");

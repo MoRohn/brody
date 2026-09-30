@@ -27,7 +27,7 @@ const PATTERNS: { kind: string; re: RegExp }[] = [
   { kind: "Bearer Token", re: /\bBearer\s+[A-Za-z0-9._-]{24,}\b/g },
 ];
 
-const PLACEHOLDER = /(example|placeholder|your[_-]?|xxx|change[-_]?me|dummy|sample|redacted|<[^>]+>|\$\{|process\.env|os\.environ|getenv|\{\{)/i;
+const PLACEHOLDER = /(example|placeholder|your[_-]?|xxx|change[-_]?me|dummy|sample|redacted|fixture|fake[-_]|mock[-_]|stub[-_]|<[^>]+>|\$\{|process\.env|os\.environ|getenv|\{\{)/i;
 const TEMPLATE_FILE = /\.(example|sample|template|dist|tmpl)$|(^|\/)\.env\.(example|sample|template|dist)$/i;
 const LOCAL_HOST = /@(localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal|db|postgres|redis|mysql|mongo)(:\d+)?([/?\s'"]|$)/i;
 

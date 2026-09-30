@@ -22,6 +22,8 @@ describe("secret detection and redaction", () => {
     expect(detectSecrets(`STRIPE_KEY=sk_live_${"x".repeat(24)}`, ".env.example")).toHaveLength(0);
     expect(detectSecrets(`DATABASE_URL=postgres://shop:pw123456@localhost:5432/shop`, "a.env")).toHaveLength(0);
     expect(detectSecrets(`password = "changeme-changeme"`, "a.ts")).toHaveLength(0);
+    expect(detectSecrets(`? { ...opts, credential: { apiKey: "fixture-replay" } }`, "src/recording.ts")).toHaveLength(0);
+    expect(detectSecrets(`const token = { access_token: "fake-token-for-tests" };`, "a.ts")).toHaveLength(0);
   });
 
   it("redacts secrets from model-bound text and leaves ordinary code intact", () => {
