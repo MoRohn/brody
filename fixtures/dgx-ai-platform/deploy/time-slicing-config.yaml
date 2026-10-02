@@ -1,0 +1,16 @@
+# PROPOSED (ADR-0007), not applied yet. Time-slicing lets the device plugin advertise each GPU as 4 replicas,
+# so up to 4 pods share one GPU and the scheduler can pack the inference services onto fewer GPUs.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nvidia-device-plugin-config
+  namespace: kube-system
+data:
+  config.yaml: |
+    version: v1
+    sharing:
+      timeSlicing:
+        renameByDefault: false
+        resources:
+          - name: nvidia.com/gpu
+            replicas: 4

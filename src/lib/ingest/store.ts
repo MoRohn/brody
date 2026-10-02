@@ -3,6 +3,7 @@ import { bulkInsert, getDb, onClose, schema } from "../db/client";
 import { newId, sha256 } from "../util/ids";
 import type { IngestSource, IngestStats, NormalizedFile } from "./types";
 import { encryptSecret } from "./credentials";
+import { deleteProjectExplanations } from "../explainer/store";
 
 type IncrementalStats = { changed: number; unchanged: number; added: number; removed: number; previousProjectId?: string };
 
@@ -132,5 +133,7 @@ export function deleteProject(projectId: string): boolean {
     tx.delete(schema.credentials).where(eq(schema.credentials.projectId, projectId)).run();
     tx.delete(schema.projects).where(eq(schema.projects.id, projectId)).run();
   });
+  // Explainer artifacts (rows and their files on disk) belong to the project too.
+  deleteProjectExplanations(projectId);
   return true;
 }

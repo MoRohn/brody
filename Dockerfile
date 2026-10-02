@@ -39,10 +39,19 @@ ENV NODE_ENV=production \
     ALLOWED_HOSTS=brody \
     HOSTNAME=0.0.0.0 \
     DATABASE_PATH=/data/brody.db
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip ca-certificates \
+# FFmpeg renders explainer videos. WITH_MANIM=1 also installs Manim for diagram scenes (larger image); without it every
+# scene uses the built-in HTML/SVG renderer. There is no speech engine in the image: set PIPER_BIN/PIPER_MODEL for a local
+# voice, or configure a cloud voice and allow it in the explainer settings.
+ARG WITH_MANIM=0
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip ca-certificates ffmpeg \
     && pip3 install --no-cache-dir --break-system-packages ruff \
+    && if [ "$WITH_MANIM" = "1" ]; then \
+         apt-get install -y --no-install-recommends libcairo2 libpango-1.0-0 libpangocairo-1.0-0 \
+         && pip3 install --no-cache-dir --break-system-packages "manim==0.19.0"; \
+       fi \
     && apt-get purge -y python3-pip && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/* /root/.cache
+ENV MANIM_PYTHON=/usr/bin/python3
 WORKDIR /app
 COPY --from=build --chown=node:node /app/package.json /app/next.config.ts ./
 COPY --from=build --chown=node:node /app/tools/serve.mjs ./tools/serve.mjs

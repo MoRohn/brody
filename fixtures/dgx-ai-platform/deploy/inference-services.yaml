@@ -1,0 +1,202 @@
+# Eight inference services. Each requests one whole GPU: Kubernetes extended resources are integers,
+# so a pod that asks for nvidia.com/gpu: 1 is given an entire A100 even when it uses a small part of it.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chat-assistant
+  namespace: ai-services
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chat-assistant
+  template:
+    metadata:
+      labels:
+        app: chat-assistant
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dgx-01
+      containers:
+        - name: server
+          image: registry.lab.internal/llm-chat:3.2
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+              memory: 64Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: code-completion
+  namespace: ai-services
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: code-completion
+  template:
+    metadata:
+      labels:
+        app: code-completion
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dgx-01
+      containers:
+        - name: server
+          image: registry.lab.internal/code-llm:1.4
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+              memory: 64Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: embeddings
+  namespace: ai-services
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: embeddings
+  template:
+    metadata:
+      labels:
+        app: embeddings
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dgx-01
+      containers:
+        - name: server
+          image: registry.lab.internal/embedder:2.0
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+              memory: 64Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reranker
+  namespace: ai-services
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reranker
+  template:
+    metadata:
+      labels:
+        app: reranker
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dgx-01
+      containers:
+        - name: server
+          image: registry.lab.internal/reranker:1.1
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+              memory: 64Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: speech-to-text
+  namespace: ai-services
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: speech-to-text
+  template:
+    metadata:
+      labels:
+        app: speech-to-text
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dgx-01
+      containers:
+        - name: server
+          image: registry.lab.internal/asr:0.9
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+              memory: 64Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vision-ocr
+  namespace: ai-services
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vision-ocr
+  template:
+    metadata:
+      labels:
+        app: vision-ocr
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dgx-01
+      containers:
+        - name: server
+          image: registry.lab.internal/ocr:2.3
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+              memory: 64Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: summarizer
+  namespace: ai-services
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: summarizer
+  template:
+    metadata:
+      labels:
+        app: summarizer
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dgx-01
+      containers:
+        - name: server
+          image: registry.lab.internal/summarizer:1.0
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+              memory: 64Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: moderation
+  namespace: ai-services
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: moderation
+  template:
+    metadata:
+      labels:
+        app: moderation
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: dgx-01
+      containers:
+        - name: server
+          image: registry.lab.internal/moderation:0.7
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+              memory: 64Gi

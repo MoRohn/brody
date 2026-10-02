@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
     "better-sqlite3", "web-tree-sitter", "pdfkit", "pptxgenjs", "fontkit", "yauzl", "typescript", "eslint", "@typescript-eslint/parser",
     "tree-sitter-python", "tree-sitter-go", "tree-sitter-java", "tree-sitter-c-sharp", "tree-sitter-typescript", "tree-sitter-javascript",
     "tree-sitter-css", "tree-sitter-html", "tree-sitter-json", "tree-sitter-bash", "tree-sitter-ruby", "tree-sitter-rust", "tree-sitter-php",
+    "@resvg/resvg-js",
   ],
   poweredByHeader: false,
   // The app is addressed as http://brody:3003 (add "127.0.0.1 brody" to /etc/hosts).

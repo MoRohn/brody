@@ -122,6 +122,8 @@ start brody --no-open   # or set BRODY_OPEN=0
 npm run analyze -- ./path/to/project --out ./report   # CODEBASE_REPORT.md, report.pdf, report.docx, report.html, report.json
 npm run convert -- notes.md                            # any Markdown file to PDF and Word with the same renderers
 npm run worker                                         # optional standalone job worker (EMBEDDED_WORKER=off on the web server)
+npm run explainer:setup                                # check FFmpeg and install Manim for explainer videos (optional)
+npm run explainer:mcp                                  # the explainer tools over MCP (stdio), for agents
 ```
 
 ## How it works
@@ -147,7 +149,7 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for design decisions and exte
 | --- | --- |
 | **Intake** | Upload files, a folder or a ZIP, or import from GitHub (branch, tag, commit, optional token for private repositories). Repository metadata is shown before analysis; long waits show the current step, a moving progress bar and live timers. |
 | **Overview** | What the system is, what it does, how it works, its technology, statistics and the engineering review, answerable in about 30 seconds. No meaningless quality score. |
-| **Code Review** | Findings with ID (`SEC-004`), severity, confidence, file and lines, evidence, plain-English behaviour, why it matters, business impact, remediation and a validated patch. Filter by severity, category, source, status, confidence and functional area. |
+| **Code Review** | Findings with ID (`SEC-004`), severity, confidence, file and lines, evidence, plain-English behaviour, why it matters, business impact, remediation and a validated patch. Filter by severity, category, source, status, confidence and functional area. **AI fix prompt** condenses every open issue (rewordings of one problem merged, ordered by severity) with its fix, validated patch and evidence into one Markdown prompt for Claude Code, Cursor, Copilot or ChatGPT: copy it or download the `.md` (`GET /api/projects/:id/fix-prompt`). |
 | **Security & Privacy** | A **security assessment**: overall risk rating with its reasons, attack surface (routes without a visible check, state-changing and sensitive routes, secrets, sensitive configuration), OWASP Top 10 (2021) coverage, CWE-mapped findings, the security controls found in the code (authentication, authorization, validation, rate limiting, headers, CSRF, password hashing, encryption, logging, audit trail, dependency and secret scanning) and a Now / Next / Later remediation plan. A **privacy & PII review**: personal-data status, a field-level inventory classified by category and sensitivity with the protection visible for each field, data subjects, third parties likely to receive personal data, privacy controls (log redaction, response filtering, erasure, data export, consent, retention, privacy notice), regulatory indicators (GDPR, CCPA/CPRA, PCI DSS, HIPAA, BIPA, COPPA) and recommendations. Both are built from the same verified findings as the Code Review and download as their own reports. |
 | **Formal Proofs** | Lean 4 models of the riskiest functions, with guarantees, counterexamples, confirmed and refuted AI claims, the axioms each proof rests on, the modelling assumptions and the fidelity audit. |
 | **AI usage and cost** | Live tokens and estimated cost in the header of every project page and on the progress screen: model and provider, input, output and cache tokens, requests, a per-step breakdown and the pricing basis. Fallback models are listed and priced separately. |
@@ -159,6 +161,7 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for design decisions and exte
 | **Search** | ⌘K across files, paths, symbols, code, findings and generated documentation, with filters. |
 | **Reports** | Every view downloads as PDF, Word or Markdown, plus a web page and JSON. The main report opens with a business Executive Summary; the Complete Technical Report keeps every finding, file, symbol and map. |
 | **Executive Deck** | A 14-slide leadership briefing from the same analysis, as editable PowerPoint with speaker notes, PDF or a web page you can present from. Every slide names the report section behind it. |
+| **Explainers** | Any result (an Ask answer, a file, area, folder or the whole system, a finding) becomes a clear explanation, a diagram, an interactive explainer or a **narrated, animated video**, all from one grounded Explanation IR. Narration is spoken by a local voice by default and the animation is cut to **measured** word timings; Manim and an HTML/SVG renderer draw the scenes; captions, transcript, chapters and sources come with every video; plain-language changes ("make this shorter", "redo just the final section") regenerate only what they touch. Also an agent tool and an MCP server. See [`docs/EXPLAINER.md`](docs/EXPLAINER.md). |
 | **Brody bundle** | Export a whole project as one `.zip` (analysis, source with secrets redacted, reports, one-click launchers) and reopen it in any Brody with the full interface and no re-analysis. |
 
 ### Brody bundle
@@ -241,6 +244,7 @@ src/lib/ask         repository Q&A
 src/lib/export      Markdown, HTML, PDF, Word, JSON
 src/lib/deck        the executive deck (HTML, PowerPoint, PDF)
 src/lib/jobs        persisted job pipeline, worker, cancellation, recovery
+src/lib/explainer   Explanation IR, router, narration, voices, timing, beats, scenes, renderers, video jobs
 src/app             Next.js UI and API routes
 fixtures/sample-shop  the demonstration repository
 ```

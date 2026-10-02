@@ -1,0 +1,20 @@
+# Fine-tuning job submitted by the research team. It needs two GPUs on the same node.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: finetune-llm-v4
+  namespace: research
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        kubernetes.io/hostname: dgx-01
+      containers:
+        - name: trainer
+          image: registry.lab.internal/trainer:4.0
+          args: ["--model", "llm-13b", "--epochs", "3"]
+          resources:
+            limits:
+              nvidia.com/gpu: 2
+              memory: 400Gi

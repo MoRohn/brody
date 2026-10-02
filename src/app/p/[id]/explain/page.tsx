@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { BriefView } from "@/components/brief";
 import { DownloadMenu } from "@/components/download";
+import { ExplainResult } from "@/components/explainer/explain-menu";
 import { Chip, Empty, ErrorBox, Evidence, Loading, SourceLink, Spinner } from "@/components/ui";
 import { api, ApiError, useApi } from "@/lib/client";
 import type { Architecture } from "@/lib/discover/types";
@@ -100,6 +101,7 @@ function CollectionBody({ id, c, docs, go }: { id: string; c: ModuleDoc; docs: D
       <div className="card p-4">
         <div className="h-label">What this group is for</div>
         <p className="prose-doc mt-1">{c.purpose}<Origin o={c.origin} /></p>
+        {c.kind === "folder" && (docs.modules ?? []).some((m) => m.path === c.path) && <div className="mt-2"><ExplainResult projectId={id} source={{ kind: "module", path: c.path }} label="Explain this folder" /></div>}
         <div className="h-label mt-4">How the files work together</div>
         <p className="prose-doc mt-1">{c.howFilesWork}</p>
         {c.evidence.length > 0 && <div className="mt-1 text-xs text-muted">Evidence: {c.evidence.map((e, i) => <span key={e}>{i > 0 && ", "}<SourceLink projectId={id} cite={e} /></span>)}</div>}
@@ -142,6 +144,7 @@ function AreaDetail({ id, a, docs, go }: { id: string; a: AreaDoc; docs: DocRepo
         <p className="prose-doc mt-1">{a.purpose}<Origin o={a.origin} /></p>
         <div className="h-label mt-4">Business function</div>
         <p className="prose-doc mt-1">{a.businessFunction}</p>
+        <div className="mt-3"><ExplainResult projectId={id} source={{ kind: "area", id: a.id }} label="Explain this area" /></div>
       </div>
       <Facts rows={[
         ["Primary components", a.components.length ? <span className="space-x-2">{a.components.slice(0, 8).map((c) => <span key={c.name + c.path}><SourceLink projectId={id} cite={`${c.path}:${c.line}`}>{c.name}</SourceLink> <span className="text-xs text-muted">{c.kind}</span></span>)}</span> : "none extracted"],
@@ -170,6 +173,7 @@ function FileDetail({ id, f, docs, go }: { id: string; f: FileDoc; docs: DocRepo
           <h2 className="mono text-[15px] font-bold" style={{ color: "var(--deep)" }}>{f.path}</h2>
           <Chip tone="info">{f.role}</Chip><Origin o={f.origin} />
         </div>
+        <div className="mt-2"><ExplainResult projectId={id} source={{ kind: "file", path: f.path }} label="Explain this file" /></div>
         <div className="mt-1 text-sm text-muted">
           Part of{folder ? <> the folder <button className="mono underline underline-offset-2" style={{ color: "var(--link)" }} onClick={() => go({ scale: "collections", item: `mod:${folder.path}` })}>{folder.path}/</button></> : " the repository root"}
           {area && <> and the <button className="underline underline-offset-2" style={{ color: "var(--link)" }} onClick={() => go({ scale: "collections", item: `area:${area.id}` })}>{area.name}</button> area</>}
@@ -319,6 +323,7 @@ export default function ExplainPage() {
                 {SYSTEM_TOC.map(([k, l]) => <a key={k} href={`#${k}`} className="block py-0.5 text-fg hover:text-deep">{l}</a>)}
               </nav>
               <div className="min-w-0 max-w-[900px] flex-1 space-y-5">
+                  <ExplainResult projectId={id} source={{ kind: "system" }} label="Explain the whole system" small={false} />
                   <Section anchor="exec" title="Executive summary">{docs.brief ? <BriefView id={id} brief={docs.brief} evidence={docs.executiveSummary} /> : <Statements id={id} items={docs.executiveSummary} />}</Section>
                   <Section anchor="glance" title="System at a glance"><div className="card overflow-hidden"><table className="tbl"><thead><tr><th>Area</th><th>Description</th></tr></thead><tbody>{docs.atAGlance.map((r) => <tr key={r.area}><td className="w-[160px] font-medium">{r.area}</td><td>{r.description}</td></tr>)}</tbody></table></div></Section>
                   <Section anchor="arch" title="Architecture overview"><DocSectionView id={id} sec={docs.architectureOverview} /><div className="mt-1 text-sm"><Link href={`/p/${id}/architecture`}>See the architecture map →</Link></div></Section>

@@ -2,6 +2,7 @@
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { DownloadMenu } from "@/components/download";
+import { ExplainResult } from "@/components/explainer/explain-menu";
 import { Chip, ErrorBox, Loading, SourceLink } from "@/components/ui";
 import { api, ApiError, useApi } from "@/lib/client";
 import type { Answer } from "@/lib/ask";
@@ -80,6 +81,9 @@ export default function AskPage() {
                       <button className="btn mt-2 py-0 text-xs" onClick={() => navigator.clipboard?.writeText(`### ${t.question}\n\n${t.answer!.answer}\n\n${t.answer!.citations.map((c) => `- \`${c.path}:${c.startLine}-${c.endLine}\``).join("\n")}`)}>Copy as Markdown</button>
                       {t.answer.notes.length > 0 && <div className="mt-2 text-xs text-muted">{t.answer.notes.join(" ")}</div>}
                     </div>
+                    {(t.answer.id ?? (t.id.startsWith("q_") ? t.id : null)) && !t.answer.insufficientEvidence && (
+                      <div className="border-t border-line px-3 py-2"><ExplainResult projectId={id} source={{ kind: "question", id: (t.answer.id ?? t.id) as string }} /></div>
+                    )}
                     {t.answer.citations.length > 0 && <div className="border-t border-line"><div className="h-label bg-panel2 px-2 py-1">Evidence ({t.answer.citations.length})</div>{t.answer.citations.map((c, i) => <Cite key={i} projectId={id} c={c} />)}</div>}
                   </div>
                 )}

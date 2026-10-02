@@ -1,0 +1,13 @@
+# NVIDIA device plugin configuration. It advertises each physical GPU as one unit of nvidia.com/gpu.
+# Sharing is disabled: no time-slicing and no MIG partitions, so one pod holds one whole GPU.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nvidia-device-plugin-config
+  namespace: kube-system
+data:
+  config.yaml: |
+    version: v1
+    flags:
+      migStrategy: none
+    sharing: {}

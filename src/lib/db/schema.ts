@@ -221,6 +221,70 @@ export const questions = sqliteTable(
   (t) => [index("questions_project_idx").on(t.projectId)],
 );
 
+/**
+ * Explanation artifacts: the canonical Explanation IR compiled from one grounded Brody result. Every explanation format
+ * (clear prose, diagram, interactive player, video) is rendered from `spec`.
+ */
+export const explanations = sqliteTable(
+  "explanations",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull(),
+    /** The Brody result it explains: question:<id>, file:<path>, area:<id>, module:<path>, finding:<code> or system. */
+    sourceRunId: text("source_run_id").notNull(),
+    source: text("source", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+    title: text("title").notNull(),
+    audience: text("audience").notNull(),
+    spec: text("spec", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+    specHash: text("spec_hash").notNull(),
+    /** ExplanationModeRouter output. */
+    router: text("router", { mode: "json" }).$type<Record<string, unknown>>(),
+    /** How the spec was compiled: model used, items dropped by the grounding guard. */
+    compile: text("compile", { mode: "json" }).$type<Record<string, unknown>>(),
+    version: integer("version").notNull().default(1),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [index("explanations_project_idx").on(t.projectId), index("explanations_source_idx").on(t.projectId, t.sourceRunId)],
+);
+
+/** Durable explainer video jobs. Stages persist their outputs by content hash, so retry and resume skip finished work. */
+export const videoJobs = sqliteTable(
+  "video_jobs",
+  {
+    id: text("id").primaryKey(),
+    explanationId: text("explanation_id").notNull(),
+    projectId: text("project_id").notNull(),
+    /** video | section | narration */
+    kind: text("kind").notNull(),
+    /** queued | running | ready | failed | cancelled */
+    status: text("status").notNull(),
+    params: text("params", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+    stages: text("stages", { mode: "json" }).$type<JobStage[]>().notNull().default([]),
+    currentStage: text("current_stage"),
+    /** Content hashes of each completed stage's inputs. */
+    stageHashes: text("stage_hashes", { mode: "json" }).$type<Record<string, string>>().notNull().default({}),
+    /** Live progress of the current stage: fraction 0..1 and a short message. */
+    progress: text("progress", { mode: "json" }).$type<Record<string, unknown>>(),
+    /** Artifacts available so far (plan, transcript, audio, storyboard, video), as paths relative to the explanation directory. */
+    artifacts: text("artifacts", { mode: "json" }).$type<Record<string, unknown>>().notNull().default({}),
+    manifest: text("manifest", { mode: "json" }).$type<Record<string, unknown>>(),
+    validation: text("validation", { mode: "json" }).$type<Record<string, unknown>>(),
+    error: text("error"),
+    log: text("log", { mode: "json" }).$type<string[]>().notNull().default([]),
+    attempts: integer("attempts").notNull().default(0),
+    parentJobId: text("parent_job_id"),
+    createdAt: integer("created_at").notNull(),
+    startedAt: integer("started_at"),
+    finishedAt: integer("finished_at"),
+    heartbeatAt: integer("heartbeat_at"),
+    cancelRequested: integer("cancel_requested", { mode: "boolean" }).notNull().default(false),
+    /** Stage metrics, token usage and cost. */
+    summary: text("summary", { mode: "json" }).$type<Record<string, unknown>>(),
+  },
+  (t) => [index("video_jobs_explanation_idx").on(t.explanationId), index("video_jobs_status_idx").on(t.status), index("video_jobs_project_idx").on(t.projectId)],
+);
+
 export interface JobStage {
   key: string;
   label: string;
@@ -237,3 +301,5 @@ export type RelationshipRow = typeof relationships.$inferSelect;
 export type FindingRow = typeof findings.$inferSelect;
 export type JobRow = typeof jobs.$inferSelect;
 export type IndexEntryRow = typeof indexEntries.$inferSelect;
+export type ExplanationRow = typeof explanations.$inferSelect;
+export type VideoJobRow = typeof videoJobs.$inferSelect;

@@ -54,6 +54,7 @@ const STAGE_OF: [RegExp, string, string][] = [
   [/^docs:/, "docs", "Documentation"],
   [/^embed/, "index", "Search index (embeddings)"],
   [/^ask/, "ask", "Ask repository"],
+  [/^explainer-/, "explainer", "Explainer (structure, narration, refinement)"],
 ];
 function stageOf(task: string): { key: string; label: string } {
   for (const [re, key, label] of STAGE_OF) if (re.test(task)) return { key, label };

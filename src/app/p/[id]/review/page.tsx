@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { DownloadMenu } from "@/components/download";
+import { FixPromptButton } from "@/components/fix-prompt";
 import { Chip, Empty, ErrorBox, Loading, OriginBadge, SeverityBadge, SourceLink } from "@/components/ui";
 import { useApi } from "@/lib/client";
 import type { FindingRow } from "@/lib/db/schema";
@@ -91,7 +92,7 @@ export default function ReviewPage() {
         </div>
       </aside>
       <section className="max-h-[55vh] w-full flex-none overflow-auto border-b border-line lg:max-h-none lg:w-[42%] lg:min-w-[300px] lg:border-b-0 lg:border-r" aria-label="Findings list">
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-line bg-panel px-3 py-1.5 text-[13px]"><span><strong>{data?.total ?? 0}</strong> finding{data?.total === 1 ? "" : "s"}{active ? " match the filters" : ""}</span><DownloadMenu projectId={id} scope="review" label="Review report" small align="left" /></div>
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-line bg-panel px-3 py-1.5 text-[13px]"><span><strong>{data?.total ?? 0}</strong> finding{data?.total === 1 ? "" : "s"}{active ? " match the filters" : ""}</span><span className="flex items-center gap-1.5"><FixPromptButton projectId={id} filters={filters} q={q} severityCounts={facets.severity ?? {}} /><DownloadMenu projectId={id} scope="review" label="Review report" small align="left" /></span></div>
         {!data?.findings.length ? <Empty title={active ? "No findings match these filters" : "No findings"}>{active ? "Clear a filter to see more." : "The analyzers found nothing to report."}</Empty> : (
           <ul>
             {data.findings.map((f) => (

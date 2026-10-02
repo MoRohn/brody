@@ -21,11 +21,14 @@
     "lockfile:fix": "node scripts/lockfile.mjs fix",
     "screenshots": "tsx scripts/screenshots.mts",
     "convert": "tsx scripts/convert.mts",
-    "brody": "bash scripts/brody.sh"
+    "brody": "bash scripts/brody.sh",
+    "explainer:mcp": "tsx scripts/explainer-mcp.mts",
+    "explainer:setup": "bash scripts/setup-explainer.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
     "@dagrejs/dagre": "^3.1.1",
+    "@resvg/resvg-js": "^2.6.2",
     "@typescript-eslint/parser": "^8.70.0",
     "@xyflow/react": "^12.11.6",
     "better-sqlite3": "^13.0.3",

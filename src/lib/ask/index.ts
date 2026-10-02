@@ -18,6 +18,8 @@ export interface Citation {
 }
 
 export interface Answer {
+  /** The stored question id, so the answer can be explained (POST /api/explanations, source question:<id>). */
+  id?: string;
   question: string;
   answer: string;
   mode: "graph" | "ai" | "retrieval";
@@ -173,17 +175,28 @@ export async function askRepository(projectId: string, question: string): Promis
       answer = retrievalOnly(projectId, q, ctx.hits, "No AI provider is configured, so no synthesized answer was written. These are the most relevant repository locations.");
     }
   }
-  db.insert(schema.questions).values({ id: newId("q"), projectId, question: q, answer: answer as unknown as Record<string, unknown>, createdAt: Date.now() }).run();
+  const id = newId("q");
+  answer = { ...answer, id };
+  db.insert(schema.questions).values({ id, projectId, question: q, answer: answer as unknown as Record<string, unknown>, createdAt: Date.now() }).run();
   return answer;
 }
 
-/** Keep only hits whose text covers a meaningful share of the question's terms. */
+/**
+ * Keep only hits whose text covers a meaningful share of the question's words. Each word counts once whichever form
+ * matches (queryTerms adds stems: "services" and "service"), and a long natural-language question needs at most four
+ * of its words in one hit, since no single excerpt restates a whole sentence-length question.
+ */
 export function relevantHits(hits: SearchHit[], terms: string[]): SearchHit[] {
   if (terms.length === 0) return hits.slice(0, 8);
-  const need = terms.length === 1 ? 1 : Math.max(2, Math.ceil(terms.length * 0.5));
+  const groups: string[][] = [];
+  for (const t of [...terms].sort((a, b) => b.length - a.length)) {
+    const g = groups.find((x) => x.some((u) => Math.min(u.length, t.length) >= 4 && (u.startsWith(t) || t.startsWith(u))));
+    if (g) g.push(t); else groups.push([t]);
+  }
+  const need = groups.length === 1 ? 1 : Math.min(4, Math.max(2, Math.ceil(groups.length * 0.5)));
   return hits.filter((h) => {
     const text = `${h.title} ${h.path ?? ""} ${h.snippet ?? ""}`.toLowerCase();
-    return terms.filter((t) => text.includes(t)).length >= need || h.signals.semantic >= 0.55;
+    return groups.filter((g) => g.some((t) => text.includes(t))).length >= need || h.signals.semantic >= 0.55;
   });
 }
 

@@ -1,0 +1,18 @@
+# Snapshot of the DGX node as Kubernetes sees it (kubectl get node dgx-01 -o yaml, trimmed).
+apiVersion: v1
+kind: Node
+metadata:
+  name: dgx-01
+  labels:
+    nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+    nvidia.com/gpu.count: "8"
+    nvidia.com/mig.capable: "true"
+status:
+  capacity:
+    cpu: "256"
+    memory: 2063731456Ki
+    nvidia.com/gpu: "8"
+  allocatable:
+    cpu: "254"
+    memory: 2055342848Ki
+    nvidia.com/gpu: "8"

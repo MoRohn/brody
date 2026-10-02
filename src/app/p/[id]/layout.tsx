@@ -21,6 +21,7 @@ const NAV: { slug: string; label: string; icon: IconName }[] = [
   { slug: "map", label: "Code Map", icon: "map" },
   { slug: "files", label: "Files", icon: "files" },
   { slug: "ask", label: "Ask Repository", icon: "ask" },
+  { slug: "explainers", label: "Explainers", icon: "video" },
   { slug: "deck", label: "Executive Deck", icon: "deck" },
   { slug: "reports", label: "Reports", icon: "reports" },
 ];
@@ -77,7 +78,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
             <nav className="flex gap-1 overflow-x-auto px-2 py-1.5 md:block md:space-y-0.5 md:p-0">
               {NAV.map((n) => {
                 const href = n.slug ? `${base}/${n.slug}` : base;
-                const active = n.slug ? pathname.startsWith(href) : pathname === base;
+                const active = n.slug ? pathname === href || pathname.startsWith(`${href}/`) : pathname === base;
                 return (
                   <Link key={n.slug} href={ready ? href : base} aria-current={active ? "page" : undefined} aria-disabled={!ready && !active ? true : undefined} tabIndex={!ready && !active ? -1 : undefined} className={`flex flex-none items-center gap-2.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[13.5px] font-bold transition-colors hover:no-underline md:rounded-xl md:py-2 ${active ? "bg-fill text-on-fill" : "text-secondary hover:bg-panel2 hover:text-deep"} ${ready || active ? "" : "pointer-events-none opacity-50"}`}>
                     <Icon name={n.icon} size={17} />{n.label}
