@@ -11,7 +11,7 @@ import { config } from "../config";
 
 export const EXECUTION_MODES = ["local", "cloud", "hybrid"] as const;
 export const PRIVACY_POLICIES = ["local-only", "ask", "allow"] as const;
-export const TTS_PROVIDER_IDS = ["macos", "piper", "openai", "elevenlabs", "speechify", "synthetic"] as const;
+export const TTS_PROVIDER_IDS = ["macos", "windows", "piper", "espeak", "openai", "elevenlabs", "speechify", "synthetic"] as const;
 export type TtsProviderId = (typeof TTS_PROVIDER_IDS)[number];
 
 const int = (name: string, fallback: number) => {
@@ -19,23 +19,37 @@ const int = (name: string, fallback: number) => {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 };
 
+/** "~/x" from a .env file, made absolute (spawn does not expand it). */
+export const expandHome = (p: string) => (p === "~" || p.startsWith("~/") || p.startsWith("~\\") ? path.join(os.homedir(), p.slice(2)) : p);
+
+/** The private virtualenv the setup installs Manim into (the same default and override). */
+export function explainerVenv(): string {
+  // The same default as tools/setup-explainer.mjs.
+  const fallback = process.platform === "win32" ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "brody", "explainer-venv") : path.join(os.homedir(), ".local", "share", "brody", "explainer-venv");
+  return expandHome(process.env.BRODY_EXPLAINER_VENV || fallback);
+}
+
+/** A virtualenv's Python: bin/python on macOS and Linux, Scripts\\python.exe on Windows. */
+export const venvPython = (venv: string) => (process.platform === "win32" ? path.join(venv, "Scripts", "python.exe") : path.join(venv, "bin", "python"));
+
 function defaultManimPython(): string {
-  const venv = path.join(os.homedir(), ".local", "share", "brody", "explainer-venv", "bin", "python");
+  const venv = venvPython(explainerVenv());
   // brody-ignore: sync-io (checked once per configuration read; a single stat)
-  return fs.existsSync(venv) ? venv : "python3";
+  return fs.existsSync(venv) ? venv : process.platform === "win32" ? "python" : "python3";
 }
 
 /** Read lazily so tests and the settings panel see changes without a restart. */
 export function explainerConfig() {
   const dataDir = config.databasePath === ":memory:" ? path.join(os.tmpdir(), `brody-explainers-${process.pid}`) : path.join(path.dirname(config.databasePath), "explainers");
   return {
-    dir: process.env.EXPLAINER_DIR || dataDir,
+    dir: path.resolve(process.env.EXPLAINER_DIR ? expandHome(process.env.EXPLAINER_DIR) : dataDir),
     ffmpeg: process.env.FFMPEG_PATH || "ffmpeg",
     ffprobe: process.env.FFPROBE_PATH || "ffprobe",
-    manimPython: process.env.MANIM_PYTHON || defaultManimPython(),
+    manimPython: process.env.MANIM_PYTHON ? expandHome(process.env.MANIM_PYTHON) : defaultManimPython(),
     swiftc: process.env.SWIFTC_PATH || "swiftc",
     piperBin: process.env.PIPER_BIN || "piper",
-    piperModel: process.env.PIPER_MODEL || "",
+    piperModel: process.env.PIPER_MODEL ? expandHome(process.env.PIPER_MODEL) : "",
+    espeakBin: process.env.ESPEAK_BIN || "espeak-ng",
     openaiKey: process.env.OPENAI_API_KEY || "",
     /** TTS has its own base URL: OPENAI_BASE_URL often points at a local chat-only endpoint. */
     openaiTtsBaseUrl: process.env.OPENAI_TTS_BASE_URL || "https://api.openai.com/v1",

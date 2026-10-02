@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { eq } from "drizzle-orm";
 import { getAIProvider, providerStatus } from "../src/lib/ai";
 import { closeDatabase, getDb, openDatabase, schema } from "../src/lib/db/client";
@@ -16,7 +17,7 @@ import { askRepository } from "../src/lib/ask";
  */
 openDatabase(":memory:");
 console.log("provider:", JSON.stringify(providerStatus()), "instance:", getAIProvider()?.name);
-const { files: raw } = readDirectory(new URL("../fixtures/sample-shop", import.meta.url).pathname);
+const { files: raw } = readDirectory(fileURLToPath(new URL("../fixtures/sample-shop", import.meta.url)));
 const { files, stats } = normalizeFiles(raw);
 const { projectId } = createProject({ type: "folder", name: "sample-shop" }, files, stats);
 const job = enqueueAnalysis(projectId);

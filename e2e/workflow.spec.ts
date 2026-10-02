@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { execFileSync } from "node:child_process";
+import { zipDirectory } from "./zip";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -10,7 +10,7 @@ const shot = async (page: import("@playwright/test").Page, name: string) => { if
 test("import → analyze → review → explain → map → explore → ask → export", async ({ page }) => {
   // Build a real ZIP of the fixture repository.
   const zip = path.join(os.tmpdir(), `sample-shop-${Date.now()}.zip`);
-  execFileSync("zip", ["-qr", zip, ".", "-x", "*.DS_Store"], { cwd: path.resolve("fixtures/sample-shop") });
+  zipDirectory(path.resolve("fixtures/sample-shop"), zip);
 
   // Intake
   await page.goto("/");

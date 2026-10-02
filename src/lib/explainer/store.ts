@@ -35,7 +35,7 @@ export const stageDir = (explanationId: string, stage: "tts" | "render", key: st
  * directory and name an existing regular file are accepted.
  */
 export function resolveArtifact(explanationId: string, rel: string): string {
-  const base = explanationDir(explanationId);
+  const base = path.resolve(explanationDir(explanationId));
   if (!rel || rel.includes("\0") || path.isAbsolute(rel) || rel.split(/[\\/]/).some((p) => p === ".." || p.startsWith("."))) throw new AppError("not_found", "No such file.", 404);
   const full = path.resolve(base, rel);
   if (!full.startsWith(base + path.sep)) throw new AppError("not_found", "No such file.", 404);
@@ -101,7 +101,11 @@ export function deleteProjectExplanations(projectId: string): void {
     tx.delete(schema.videoJobs).where(eq(schema.videoJobs.projectId, projectId)).run();
     if (ids.length) tx.delete(schema.explanations).where(inArray(schema.explanations.id, ids)).run();
   });
-  for (const id of ids) fs.rmSync(path.join(explainerConfig().dir, id), { recursive: true, force: true });
+  // A file being streamed can be locked on Windows: retry, and never fail the deletion over leftover files.
+  for (const id of ids) {
+    try { fs.rmSync(path.join(explainerConfig().dir, id), { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); }
+    catch (e) { console.warn(`[brody] could not remove explainer files for ${id}: ${(e as Error).message}`); }
+  }
 }
 
 /** Total bytes under a directory (artifact size metrics). */

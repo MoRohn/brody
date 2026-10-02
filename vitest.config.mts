@@ -9,7 +9,7 @@ export default defineConfig({
     // Never read the developer's real AI selections (data/ai-settings.json) during tests.
     // Worker threads are exercised by tests/workers.test.ts; everything else parses in-process so the suite stays fast and simple.
     // Formal verification (Lean) is off by default so scripted providers in other suites need no Lean answers; tests/formal.test.ts turns it on.
-    env: { PARSE_WORKERS: "0", AI_SETTINGS_PATH: path.join(os.tmpdir(), "brody-vitest-ai-settings-unused.json"), FORMAL_VERIFICATION: "off" },
+    env: { BRODY_RUNTIME: "local", PARSE_WORKERS: "0", AI_SETTINGS_PATH: path.join(os.tmpdir(), "brody-vitest-ai-settings-unused.json"), FORMAL_VERIFICATION: "off" },
     include: ["tests/**/*.test.ts"],
     globalSetup: ["tests/global-setup.ts"],
     testTimeout: 60_000,

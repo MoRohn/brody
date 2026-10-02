@@ -12,7 +12,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { explainerConfig } from "../config";
-import { readWavFile, silences } from "../audio";
+import { readWavFile, silences, type Pcm } from "../audio";
 import { MediaError, run, safeEnv, toPcmWav } from "../media";
 import { sha256 } from "../../util/ids";
 import { TTSError, type TTSProvider, type TTSRequest, type TTSResult, type TTSWord } from "./types";
@@ -103,6 +103,28 @@ function runHelper(bin: string, input: string | null, args: string[], signal?: A
   });
 }
 
+/**
+ * Words from a speech engine's word marks (audio position plus character range in the spoken text). A voice may split
+ * one word into several ranges ("G", "P", "Us"): ranges touching inside one whitespace-delimited word are merged. Each
+ * word ends at the next word's start, or earlier at the first silence inside its slot. Shared by macOS and Windows.
+ */
+export function wordsFromMarks(text: string, marks: { startMs: number; loc: number; end: number }[], pcm: Pcm, durationMs: number): TTSWord[] {
+  const quiet = silences(pcm, 70, 0.012);
+  const merged: { startMs: number; loc: number; end: number }[] = [];
+  for (const m of [...marks].sort((a, b) => a.startMs - b.startMs || a.loc - b.loc)) {
+    const prev = merged[merged.length - 1];
+    if (prev && m.loc <= prev.end && !/\s/.test(text.slice(prev.end, m.loc + 1))) { prev.end = Math.max(prev.end, m.end); continue; }
+    if (prev && m.loc === prev.end && !/\s/.test(text[m.loc - 1] ?? " ")) { prev.end = m.end; continue; }
+    merged.push({ ...m });
+  }
+  return merged.map((m, i) => {
+    const nextStart = i + 1 < merged.length ? merged[i + 1].startMs : durationMs;
+    // End at the first silence that begins inside the word's slot, if any.
+    const gap = quiet.find((s) => s.startMs > m.startMs + 40 && s.startMs < nextStart);
+    return { text: text.slice(m.loc, m.end), startMs: m.startMs, endMs: Math.max(m.startMs + 20, gap ? gap.startMs : nextStart), charStart: m.loc, charEnd: m.end };
+  });
+}
+
 export class MacSpeechProvider implements TTSProvider {
   readonly id = "macos";
   readonly label = "macOS on-device voice";
@@ -131,22 +153,7 @@ export class MacSpeechProvider implements TTSProvider {
     fs.rmSync(caf, { force: true });
     const pcm = readWavFile(wav);
     const durationMs = (pcm.data.length / 2 / pcm.sampleRate) * 1000;
-    const quiet = silences(pcm, 70, 0.012);
-    // A voice may split one word into several ranges (G, P, Us); merge ranges that touch inside one whitespace-delimited word.
-    const merged: { offset: number; loc: number; end: number }[] = [];
-    for (const m of meta.marks) {
-      const prev = merged[merged.length - 1];
-      if (prev && m.loc <= prev.end && !/\s/.test(req.text.slice(prev.end, m.loc + 1))) { prev.end = Math.max(prev.end, m.loc + m.len); continue; }
-      if (prev && m.loc === prev.end && !/\s/.test(req.text[m.loc - 1] ?? " ")) { prev.end = m.loc + m.len; continue; }
-      merged.push({ offset: m.offset, loc: m.loc, end: m.loc + m.len });
-    }
-    const words: TTSWord[] = merged.map((m, i) => {
-      const startMs = (m.offset / meta.sampleRate) * 1000;
-      const nextStart = i + 1 < merged.length ? (merged[i + 1].offset / meta.sampleRate) * 1000 : durationMs;
-      // End at the first silence that begins inside the word's slot, if any.
-      const gap = quiet.find((s) => s.startMs > startMs + 40 && s.startMs < nextStart);
-      return { text: req.text.slice(m.loc, m.end), startMs, endMs: Math.max(startMs + 20, gap ? gap.startMs : nextStart), charStart: m.loc, charEnd: m.end };
-    });
+    const words = wordsFromMarks(req.text, meta.marks.map((m) => ({ startMs: (m.offset / meta.sampleRate) * 1000, loc: m.loc, end: m.loc + m.len })), pcm, durationMs);
     return { audioPath: wav, words, durationMs, timing: { source: "provider", granularity: "word" }, providerMetadata: { voice: meta.voice, engineSampleRate: meta.sampleRate, marks: meta.marks.length } };
   }
 }

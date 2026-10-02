@@ -3,13 +3,14 @@ import { guard, json } from "@/lib/api";
 import { effectiveRouting, EXECUTION_MODES, explainerSettingsSchema, PRIVACY_POLICIES, readExplainerSettings, TTS_PROVIDER_IDS, updateExplainerSettings } from "@/lib/explainer/config";
 import { jsonBody } from "@/lib/explainer/http";
 import { availableRenderers } from "@/lib/explainer/render";
+import { toolSummary } from "@/lib/explainer/setup";
 import { providerStatuses } from "@/lib/explainer/tts";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 async function state(force = false) {
-  const [voices, renderers] = await Promise.all([providerStatuses(force), availableRenderers()]);
+  const [voices, renderers, tools] = await Promise.all([providerStatuses(force), availableRenderers(), toolSummary()]);
   return {
     saved: readExplainerSettings(),
     effective: effectiveRouting(),
@@ -17,6 +18,7 @@ async function state(force = false) {
     // Capabilities only: never a key, never a key's presence beyond "available".
     voices: voices.filter((v) => v.id !== "synthetic" || v.available && process.env.EXPLAINER_TTS_PROVIDER === "synthetic").map((v) => ({ id: v.id, label: v.label, local: v.local, wordTimings: v.wordTimings, available: v.available, reason: v.reason, defaultVoice: v.defaultVoice })),
     renderers,
+    tools,
   };
 }
 

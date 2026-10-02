@@ -10,7 +10,9 @@ import { effectiveRouting, type TtsProviderId } from "../config";
 import type { PrivacyDecision } from "../privacy";
 import { ElevenLabsProvider, OpenAISpeechProvider, SpeechifyProvider } from "./cloud";
 import { MacSpeechProvider } from "./macos";
+import { EspeakProvider } from "./espeak";
 import { PiperProvider } from "./piper";
+import { WindowsSpeechProvider } from "./windows";
 import { SyntheticProvider } from "./synthetic";
 import type { TTSProvider } from "./types";
 
@@ -22,7 +24,9 @@ const reg: Registry = ((globalThis as unknown as { __brodyTts?: Registry }).__br
 
 function build(): Map<string, TTSProvider> {
   if (reg.providers.size === 0) {
-    for (const p of [new MacSpeechProvider(), new PiperProvider(), new OpenAISpeechProvider(), new ElevenLabsProvider(), new SpeechifyProvider(), new SyntheticProvider()]) reg.providers.set(p.id, p);
+    // Order is the preference among equals: word-timed local voices, then sentence-timed ones (Piper sounds better than
+    // eSpeak NG), then cloud voices.
+    for (const p of [new MacSpeechProvider(), new WindowsSpeechProvider(), new PiperProvider(), new EspeakProvider(), new OpenAISpeechProvider(), new ElevenLabsProvider(), new SpeechifyProvider(), new SyntheticProvider()]) reg.providers.set(p.id, p);
   }
   return reg.providers;
 }

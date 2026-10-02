@@ -27,7 +27,7 @@ import { extractBeats } from "./beats";
 import { buildCues, buildTranscript, chaptersVtt, toSrt, toVtt } from "./captions";
 import { effectiveRouting, explainerConfig } from "./config";
 import { CANVAS } from "./design";
-import { concatScenes, concatWavs, conformScene, extractFrame, lastLines, mux, probe } from "./media";
+import { concatScenes, concatWavs, conformScene, extractFrame, ffmpegProblem, lastLines, mux, probe } from "./media";
 import { fitPlanLength, planNarration } from "./narrate";
 import { classifyNarration, decideExternal, sanitizeNarration } from "./privacy";
 import { allRenderers, getRenderer, HtmlRenderer, ManimRenderer } from "./render";
@@ -241,6 +241,9 @@ async function runVideoJob(jobId: string, ledger: UsageLedger): Promise<void> {
     // 1. Planning: the canonical spec, validated, adjusted to the requested audience. -----------------------------------
     stage = "planning"; t.start(stage);
     const spec = applySpecEdits({ ...st.spec, audience: { ...st.spec.audience, level: st.params.audience } }, st.params);
+    // Before any voice is paid for: a video cannot be made without a usable FFmpeg.
+    const noFfmpeg = await ffmpegProblem();
+    if (noFfmpeg) throw new AppError("ffmpeg_unavailable", noFfmpeg, 503);
     const sv = validateSpec(spec);
     if (!sv.ok) throw new AppError("invalid_spec", `The explanation spec is inconsistent: ${sv.issues.filter((i) => i.severity === "error").slice(0, 3).map((i) => `${i.path} ${i.message}`).join("; ")}`, 422);
     st.spec = spec;
@@ -330,7 +333,7 @@ async function runVideoJob(jobId: string, ledger: UsageLedger): Promise<void> {
     // 5. Storyboarding: the visual scene plan, validated before anything is rendered. ---------------------------------
     stage = "storyboarding"; t.start(stage);
     const renderers = (await Promise.all(allRenderers().map(async (r) => ((await r.unavailableReason()) ? null : r.id)))).filter((x): x is RendererId => !!x);
-    if (!renderers.length) throw new AppError("no_renderer", "No renderer is available.", 503, "Install @resvg/resvg-js (npm install) or Manim (scripts/setup-explainer.sh).");
+    if (!renderers.length) throw new AppError("no_renderer", "No renderer is available.", 503, "Install @resvg/resvg-js (npm install) or Manim (npm run explainer:setup).");
     if (st.params.renderer === "manim" && !renderers.includes("manim")) t.note(`Manim was requested but is unavailable (${await getRenderer("manim")?.unavailableReason()}); scenes use the HTML renderer.`);
     let sp = planScenes({ spec: st.spec, plan: st.plan, audio: st.audio, beats, style: st.params.style, renderer: st.params.renderer, available: renderers });
     if (st.params.motion === "reduced") sp = { ...sp, plan: reduceMotion(sp.plan) };

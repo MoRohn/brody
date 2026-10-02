@@ -104,21 +104,26 @@ finish 1
 `;
 
 // tar.exe (Windows 10 and later) writes a standard ZIP; PowerShell's Compress-Archive can write backslash paths that Brody rejects.
+// Like the shell launcher it tries loopback first (always accepted by the host check, no hosts-file entry needed), then
+// the brody name; BRODY_URL overrides both.
 export const LAUNCHER_BAT = [
   "@echo off",
   "setlocal",
   'cd /d "%~dp0"',
-  'if not defined BRODY_URL set "BRODY_URL=http://brody:3003"',
+  'if defined BRODY_URL (set "CANDIDATES=%BRODY_URL%") else (set "CANDIDATES=http://localhost:3003 http://127.0.0.1:3003 http://brody:3003")',
   'set "TMPZIP=%TEMP%\\brody-export-%RANDOM%.zip"',
   'tar.exe -a -cf "%TMPZIP%" *',
-  'curl.exe -fsS -F "file=@%TMPZIP%" "%BRODY_URL%/api/projects/import-bundle" -o "%TEMP%\\brody-import.json"',
-  "if errorlevel 1 (",
-  "  echo Could not import into Brody at %BRODY_URL%. Is it running? Start it with: brody start",
-  "  pause",
-  "  exit /b 1",
+  "for %%U in (%CANDIDATES%) do (",
+  '  curl.exe -fsS -F "file=@%TMPZIP%" "%%U/api/projects/import-bundle" -o "%TEMP%\\brody-import.json" 2>nul && (set "URL=%%U" & goto imported)',
   ")",
+  'del "%TMPZIP%" 2>nul',
+  "echo Could not import into Brody (tried %CANDIDATES%). Is it running? Start it in the Brody folder with: npm start",
+  "echo If it runs at another address, set BRODY_URL and try again.",
+  "pause",
+  "exit /b 1",
+  ":imported",
   'for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "(Get-Content -Raw \'%TEMP%\\brody-import.json\' | ConvertFrom-Json).project.id"`) do set "ID=%%I"',
-  'start "" "%BRODY_URL%/p/%ID%"',
+  'start "" "%URL%/p/%ID%"',
   'del "%TMPZIP%" 2>nul',
   "",
 ].join("\r\n");

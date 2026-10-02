@@ -5,7 +5,7 @@ FROM node:24-bookworm-slim AS build
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 RUN npm ci
 COPY . .
 # The webpack builder and a capped heap keep peak memory near 1.4 GB so the image builds on default Docker Desktop VMs.
@@ -40,10 +40,10 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0 \
     DATABASE_PATH=/data/brody.db
 # FFmpeg renders explainer videos. WITH_MANIM=1 also installs Manim for diagram scenes (larger image); without it every
-# scene uses the built-in HTML/SVG renderer. There is no speech engine in the image: set PIPER_BIN/PIPER_MODEL for a local
-# voice, or configure a cloud voice and allow it in the explainer settings.
+# scene uses the built-in HTML/SVG renderer. eSpeak NG narrates out of the box (sentence-level timing); set PIPER_BIN and
+# PIPER_MODEL for a better local voice, or configure a cloud voice and allow it in the explainer settings.
 ARG WITH_MANIM=0
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip ca-certificates ffmpeg \
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip ca-certificates ffmpeg espeak-ng \
     && pip3 install --no-cache-dir --break-system-packages ruff \
     && if [ "$WITH_MANIM" = "1" ]; then \
          apt-get install -y --no-install-recommends libcairo2 libpango-1.0-0 libpangocairo-1.0-0 \

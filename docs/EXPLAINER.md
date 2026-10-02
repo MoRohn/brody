@@ -88,7 +88,9 @@ spoken "nvidia dot com slash G P U", `requestCancel()` "request cancel", `80GB` 
 | Provider | Runs | Timing |
 | --- | --- | --- |
 | macOS on-device (`macos`) | local, no key | **measured** by the speech engine: samples written before each word callback (verified against the audio's silences: within ~20 ms) |
+| Windows speech (`windows`) | local, no key | **measured** the same way: SAPI (`System.Speech`, driven through PowerShell with the text in a file) raises `SpeakProgress` with each word's position in the audio it has written |
 | Piper (`piper`) | local | **sentence-level, measured**: each sentence synthesised alone and its samples counted; words inside a sentence are interpolated and flagged; beats snap to sentence starts |
+| eSpeak NG (`espeak`) | local, no key (Linux, and in the Docker image) | **sentence-level, measured**, as Piper; it sounds robotic, so Piper is preferred when both are installed |
 | ElevenLabs | cloud | measured, from the service's character alignment |
 | Speechify | cloud | measured, from speech marks |
 | OpenAI | cloud | **aligned**: speech, then OpenAI transcription with word timestamps on that audio |
@@ -188,7 +190,8 @@ re-rendered once with the HTML renderer. A job is READY only if nothing fails.
 | GET | `/api/video-jobs/:id` | status, stages, progress, artifacts, validation, metrics |
 | GET | `/api/video-jobs/:id/events` | server-sent events (`job`, `end`) |
 | POST | `/api/video-jobs/:id/cancel`, `/retry`, `/regenerate-section` | `{sectionId, instruction?}` for the last |
-| GET / PUT | `/api/explainer/settings` | routing, privacy, voices and renderers with availability |
+| GET / PUT | `/api/explainer/settings` | routing, privacy, voices and renderers with availability, and the tools state |
+| GET / POST | `/api/explainer/setup` | FFmpeg, the Manim setup state and log / check and install now |
 | GET / POST | `/api/explainer/tool` | tool definitions / `{name, arguments}` |
 
 State-changing requests must be JSON, so a cross-site page cannot start jobs.
@@ -202,10 +205,31 @@ restate, embellish or inject the material being explained.
 
 ## Setup
 
-FFmpeg is required. `npm run explainer:setup` checks it and installs Manim into a private virtualenv when cairo and
-pango are present; without Manim every scene uses the HTML renderer. macOS has an on-device voice; on Linux set
-`PIPER_MODEL` for Piper, or configure a cloud voice. The Docker image includes FFmpeg; build with
-`--build-arg WITH_MANIM=1` for Manim. All settings are in `.env.example`.
+FFmpeg is required. Manim is optional; without it every scene uses the HTML renderer.
+
+**Brody sets itself up.** When the server (or `npm run worker`) starts, `ensureExplainerTools()` (`setup.ts`) runs
+`tools/setup-explainer.mjs --check` (a dependency-free Node script, so it runs the same on macOS, Linux and Windows). If Manim is missing and cairo and pango are present, it runs the script again in
+the background to install Manim into a private virtualenv (`BRODY_EXPLAINER_VENV`, default
+`~/.local/share/brody/explainer-venv`); videos made meanwhile use the HTML renderer, and new jobs pick Manim up as soon
+as it is installed. The outcome is kept in `explainer-setup.json` next to the database: a failed or impossible install
+(no FFmpeg, no cairo/pango) is retried at most once a day, while a good state is re-checked at every start (it takes about
+a second). It never installs system packages: it says which command to run. It does not run in Docker (the image
+decides at build time), in CI or tests, when `MANIM_PYTHON` names a Python you manage, or with
+`EXPLAINER_AUTO_SETUP=off`. **Explainers → Voice & privacy → Tools** shows FFmpeg, the setup state and its log, with
+**Check and set up now** (`GET`/`POST /api/explainer/setup`). By hand: `npm run explainer:setup` (installs) or
+`npm run explainer:setup -- --check` (reports; exit 0 ready, 1 FFmpeg missing, 2 cairo/pango missing, 3 Manim
+installable, 4 install failed). It also checks that FFmpeg has the H.264 (libx264) and AAC encoders (Fedora's default
+`ffmpeg-free` has neither libx264); a video job checks the same before it spends anything, and fails at once with the fix
+if they are missing.
+
+| | FFmpeg | Voice without a key | Manim (optional) |
+| --- | --- | --- | --- |
+| macOS | `brew install ffmpeg` | built in (word timing; needs `xcode-select --install` for `swiftc`) | `brew install cairo pango pkg-config`, then automatic |
+| Windows | `winget install Gyan.FFmpeg` | built in (word timing; any voice under Settings → Speech) | automatic (prebuilt wheels; needs Python or `uv`) |
+| Linux | `apt install ffmpeg` (Fedora: from RPM Fusion) | `apt install espeak-ng`, or Piper with `PIPER_MODEL` | `apt install python3-venv python3-dev build-essential pkg-config libcairo2-dev libpango1.0-dev`, then automatic |
+| Docker | included | eSpeak NG included | `--build-arg WITH_MANIM=1` |
+
+The virtualenv defaults to `%LOCALAPPDATA%\brody\explainer-venv` on Windows. All settings are in `.env.example`.
 
 ## Tests
 
@@ -217,12 +241,15 @@ covers job lifecycle, cancellation, retry and resume, voice fallback and timeout
 local-only and privacy routing, sentence-timed voices, stale-worker recovery and the HTTP API.
 `tests/explainer-render.test.ts` covers layout validation, the frame function, the HTML renderer, media validation of
 broken output, the Manim safeguards (caching refused, no frame drift across forty odd-length animations, pixel agreement
-with the SVG renderer) and the macOS voice's timing against the audio. Manim and macOS tests are skipped where those
-are not installed.
+with the SVG renderer) and the macOS voice's timing against the audio. `tests/explainer-voices.test.ts` covers the
+word-mark logic shared by the macOS and Windows voices, voice routing, eSpeak NG and the Windows voice;
+`tests/explainer-setup.test.ts` covers automatic setup and the FFmpeg encoder check. Engine tests are skipped where the
+engine is not installed; CI runs them on macOS, Windows and Linux.
 
 ## Known limitations
 
-* The macOS voice is the only keyless voice with measured word timing; Piper gives sentence-level timing only. Cloud
+* The macOS and Windows voices are the keyless voices with measured word timing; Piper and eSpeak NG give
+  sentence-level timing only. Cloud
   voices need keys and, for repository content, permission.
 * There is no visual-critic model: Brody's AI interface is text-only, so visual quality is checked by measurement
   (layout, contrast, blank frames, Manim/SVG agreement in tests), not by a model looking at frames.

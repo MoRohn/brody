@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { execFileSync } from "node:child_process";
+import { zipDirectory } from "./zip";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -37,7 +37,7 @@ test("the data model map draws every model with its text, and shows relationship
   fs.writeFileSync(path.join(dir, "app", "schemas.py"), SCHEMAS);
   fs.writeFileSync(path.join(dir, "README.md"), "# scoring\n");
   const zip = path.join(os.tmpdir(), `er-${Date.now()}.zip`);
-  execFileSync("zip", ["-qr", zip, "."], { cwd: dir });
+  zipDirectory(dir, zip);
 
   await page.goto("/");
   await page.getByRole("tab", { name: "ZIP archive" }).click();

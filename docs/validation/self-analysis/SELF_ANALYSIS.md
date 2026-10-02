@@ -937,7 +937,7 @@ brody/
 │   ├── benchmark.mts
 │   ├── brody.sh
 │   ├── convert.mts
-│   ├── validate.sh
+│   ├── validate.sh (now tools/validate.mjs)
 │   ├── verify-ai.mts
 │   └── worker.mts
 ├── src/ ●

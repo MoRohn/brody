@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { execFileSync } from "node:child_process";
+import { zipDirectory } from "./zip";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -9,7 +9,7 @@ const SHOTS = process.env.SCREENSHOT_DIR;
 
 test("the executive deck: a pipeline step, a page with a live preview, and three downloads", async ({ page, browser }) => {
   const zip = path.join(os.tmpdir(), `deck-shop-${Date.now()}.zip`);
-  execFileSync("zip", ["-qr", zip, ".", "-x", "*.DS_Store"], { cwd: path.resolve("fixtures/sample-shop") });
+  zipDirectory(path.resolve("fixtures/sample-shop"), zip);
   await page.goto("/");
   await page.getByRole("tab", { name: "ZIP archive" }).click();
   await page.locator('input[aria-label="Select ZIP archive"]').setInputFiles(zip);

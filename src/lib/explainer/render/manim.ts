@@ -15,6 +15,8 @@ import { MANIM_SCRIPT, MANIM_SCRIPT_VERSION } from "./manim-script";
 import type { ExplainerRenderer, RenderContext, SceneRender } from "./types";
 
 let probe: { at: number; reason: string | null; version?: string } | undefined;
+/** Forget the cached availability check (after an install, so new jobs use Manim at once). */
+export function resetManimProbe(): void { probe = undefined; }
 
 const mix = (a: string, b: string, p: number) => {
   const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
@@ -63,7 +65,7 @@ export class ManimRenderer implements ExplainerRenderer {
     const py = explainerConfig().manimPython;
     try {
       const r = await run(py, ["-c", "import manim, manimpango, sys; print(manim.__version__)"], { timeoutMs: 60_000 });
-      probe = r.code === 0 ? { at: Date.now(), reason: null, version: r.stdout.toString().trim() } : { at: Date.now(), reason: `Manim is not installed for ${py}. Run scripts/setup-explainer.sh, or set MANIM_PYTHON to a Python with manim.` };
+      probe = r.code === 0 ? { at: Date.now(), reason: null, version: r.stdout.toString().trim() } : { at: Date.now(), reason: `Manim is not installed for ${py}. Run npm run explainer:setup, or set MANIM_PYTHON to a Python with manim.` };
     } catch {
       probe = { at: Date.now(), reason: `Python was not found (${py}). Set MANIM_PYTHON.` };
     }

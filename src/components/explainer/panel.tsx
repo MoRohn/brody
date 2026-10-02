@@ -119,7 +119,7 @@ function SourcesView({ projectId, explanation }: { projectId: string; explanatio
 // ---------------------------------------------------------------------------------------------------------------------
 // Video
 // ---------------------------------------------------------------------------------------------------------------------
-interface SettingsState { effective: { execution: string; privacy: string; ttsProvider: string }; voices: { id: string; label: string; local: boolean; wordTimings: boolean; available: boolean; reason: string | null }[]; renderers: { id: string; label: string; available: boolean; reason: string | null }[] }
+interface SettingsState { tools?: { ffmpegProblem?: string | null; setup: { state: string; message?: string } }; effective: { execution: string; privacy: string; ttsProvider: string }; voices: { id: string; label: string; local: boolean; wordTimings: boolean; available: boolean; reason: string | null }[]; renderers: { id: string; label: string; available: boolean; reason: string | null }[] }
 
 function CreateVideoForm({ explanation, onStarted, compact = false }: { explanation: ExplanationView; onStarted: (job: JobView) => void; compact?: boolean }) {
   const settings = useApi<SettingsState>("/api/explainer/settings");
@@ -159,6 +159,9 @@ function CreateVideoForm({ explanation, onStarted, compact = false }: { explanat
           <select className="input !py-1" value={renderer} onChange={(e) => setRenderer(e.target.value)} aria-label="Renderer"><option value="auto">Automatic per scene</option>{(s?.renderers ?? []).map((r) => <option key={r.id} value={r.id} disabled={!r.available}>{r.label}{r.available ? "" : " (not installed)"}</option>)}</select>
         </label>
       </div>
+      {s?.tools?.ffmpegProblem && <p role="status" className="text-xs" style={{ color: "var(--crit)" }}>Videos cannot be made yet: {s.tools.ffmpegProblem}</p>}
+      {s && !voices.some((v) => v.available) && <p role="status" className="text-xs text-muted" data-testid="no-voice">{exec === "local" ? "No voice is available on this machine" : "No voice is available for this mode"}: {exec === "local" ? (s.voices.find((v) => v.local && v.reason && !/only available on/.test(v.reason))?.reason ?? "install one (the Explainers page lists the options)") : "configure a cloud voice key, or choose Local"}. The explanation, diagram and interactive view work without one.</p>}
+      {s?.tools && (s.tools.setup.state === "checking" || s.tools.setup.state === "installing") && <p className="text-xs text-muted"><span className="spinner mr-1.5 text-[var(--accent)]" />{s.tools.setup.message}. Videos started now use the HTML renderer for every scene.</p>}
       {cloudChosen && <label className="flex items-start gap-2 text-[13px]"><input type="checkbox" className="mt-1" checked={allowExternal} onChange={(e) => setAllowExternal(e.target.checked)} /><span>Send the narration text to the cloud voice provider. It describes this repository, which may be private. Detected secrets are never sent.</span></label>}
       <div className="flex items-center gap-2">
         <button className="btn btn-primary btn-cta" onClick={start} disabled={busy} aria-busy={busy} data-testid="start-video"><Icon name="video" size={15} />Create video<span className="disc" aria-hidden>→</span></button>

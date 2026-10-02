@@ -64,7 +64,7 @@ export function detectDependencies(files: LoadedFile[]): DependencyInfo[] {
       } else if (/\.csproj$/.test(name) || name === "directory.packages.props") {
         for (const m of f.text.matchAll(/<PackageReference\s+Include="([^"]+)"(?:\s+Version="([^"]+)")?/g)) add({ name: m[1], version: m[2], manifest: f.path, dev: /test|xunit|nunit|moq/i.test(m[1]), ecosystem: "nuget", usedBy: 0 });
       } else if (name === "pubspec.yaml") {
-        const sec = f.text.match(/^dependencies:\n([\s\S]*?)(?:\n\S|$)/m);
+        const sec = f.text.match(/^dependencies:\r?\n([\s\S]*?)(?:\r?\n\S|$)/m);
         if (sec) for (const m of sec[1].matchAll(/^\s{2}([a-z_0-9]+):\s*(.*)$/gm)) add({ name: m[1], version: m[2] || undefined, manifest: f.path, dev: false, ecosystem: "pub", usedBy: 0 });
       }
     } catch {

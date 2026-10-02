@@ -17,6 +17,8 @@ jobs:
       - name: Lock file matches the npm bundled with Node 24
         run: node scripts/lockfile.mjs check
       - run: pip install ruff
+      # Explainer videos need FFmpeg (H.264 and AAC); eSpeak NG is the keyless Linux voice the tests exercise.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg espeak-ng
       - name: Lean 4 (formal verification tests run against the real checker)
         run: |
           curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --no-modify-path --default-toolchain leanprover/lean4:v4.34.0
@@ -32,3 +34,37 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           PW_CHANNEL= npx playwright test
+
+  # The same tests and production build on macOS and Windows: paths, line endings, subprocesses, the npm scripts (all
+  # plain Node) and each system's own voice (the macOS and Windows speech engines measure word timing).
+  cross-platform:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: pip install ruff
+      - name: FFmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+      - name: FFmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg --no-progress -y
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Unit and integration tests
+        run: npm test
+      - name: Explainer tool check
+        # FFmpeg must be usable (exit 1 fails); Manim is optional (2 = needs system libraries, 3 = installable).
+        run: |
+          code=0; node tools/setup-explainer.mjs --check || code=$?
+          test $code -ne 1 -a $code -ne 4
+        shell: bash
+      - name: Production build
+        run: npm run build

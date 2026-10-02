@@ -21,7 +21,9 @@ function int(name: string, fallback: number): number {
 }
 
 export const config = {
-  databasePath: process.env.DATABASE_PATH ?? path.join(process.cwd(), "data", "brody.db"),
+  // Resolved to an absolute path once, so every path built from it (explainer files, settings, the parse cache) compares
+  // correctly; ".env.example" ships a relative DATABASE_PATH.
+  databasePath: process.env.DATABASE_PATH === ":memory:" ? ":memory:" : path.resolve(/*turbopackIgnore: true*/ process.env.DATABASE_PATH ?? path.join(process.cwd(), "data", "brody.db")),
   limits: {
     /** Maximum number of files accepted for a single project. */
     maxFiles: int("MAX_FILES", 20000),
@@ -95,7 +97,8 @@ export const config = {
   staticAnalysis: {
     enabled: process.env.STATIC_ANALYSIS !== "off",
     ruffPath: process.env.RUFF_PATH ?? "ruff",
-    pythonPath: process.env.PYTHON_PATH ?? "python3",
+    // On Windows "python3" is usually the Microsoft Store alias, which runs nothing.
+    pythonPath: process.env.PYTHON_PATH ?? (process.platform === "win32" ? "python" : "python3"),
     goPath: process.env.GO_PATH ?? "go",
   },
   /**

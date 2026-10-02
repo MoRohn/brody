@@ -10,11 +10,14 @@
  * so CI can run it before `npm ci`.
  */
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// npm and npx are .cmd scripts on Windows, which spawn can only start through a shell.
+const SHELL = process.platform === "win32";
 const NODE_MAJOR = "24";
 const mode = process.argv[2];
 if (mode !== "check" && mode !== "fix") {
@@ -22,7 +25,7 @@ if (mode !== "check" && mode !== "fix") {
   process.exit(2);
 }
 
-const localNpm = () => spawnSync("npm", ["-v"], { encoding: "utf8" }).stdout.trim();
+const localNpm = () => (spawnSync("npm", ["-v"], { encoding: "utf8", shell: SHELL }).stdout ?? "").trim();
 
 /** The npm bundled with the latest Node 24 release, or the local npm when nodejs.org cannot be reached. */
 async function targetNpm() {
@@ -38,7 +41,7 @@ async function targetNpm() {
 
 function npm(version, cwd, args) {
   const cmd = version === localNpm() ? ["npm", args] : ["npx", ["-y", `npm@${version}`, ...args]];
-  const r = spawnSync(cmd[0], [...cmd[1], "--ignore-scripts", "--no-audit", "--no-fund"], { cwd, encoding: "utf8" });
+  const r = spawnSync(cmd[0], [...cmd[1], "--ignore-scripts", "--no-audit", "--no-fund"], { cwd, encoding: "utf8", shell: SHELL });
   return { ok: r.status === 0, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 
@@ -46,7 +49,7 @@ function npm(version, cwd, args) {
 function inScratch(fn) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "brody-lock-"));
   try {
-    for (const f of ["package.json", "package-lock.json"]) fs.copyFileSync(path.join(root, f), path.join(dir, f));
+    for (const f of ["package.json", "package-lock.json", ".npmrc"]) if (fs.existsSync(path.join(root, f))) fs.copyFileSync(path.join(root, f), path.join(dir, f));
     return fn(dir);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

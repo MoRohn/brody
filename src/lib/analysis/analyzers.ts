@@ -31,7 +31,7 @@ function run(cmd: string, args: string[], opts: { cwd?: string; timeoutMs?: numb
     };
     let child: ChildProcessWithoutNullStreams;
     try {
-      child = spawn(cmd, args, { cwd: opts.cwd, env: { PATH: process.env.PATH ?? "", HOME: os.tmpdir(), LANG: "C.UTF-8" } as unknown as NodeJS.ProcessEnv, shell: false });
+      child = spawn(cmd, args, { cwd: opts.cwd, env: analyzerEnv(), shell: false });
     } catch {
       finish({ code: null, stdout, stderr, missing: true });
       return;
@@ -45,7 +45,23 @@ function run(cmd: string, args: string[], opts: { cwd?: string; timeoutMs?: numb
   });
 }
 
-/** Extract files into a private temp directory without blocking the event loop. */
+/**
+ * A minimal environment for analyzer subprocesses: no keys or tokens. Windows programs (Python included) also need the
+ * system directories and temp variables, or they fail in ways that look like a clean run.
+ */
+function analyzerEnv(): NodeJS.ProcessEnv {
+  const env: Record<string, string> = { PATH: process.env.PATH ?? "", HOME: os.tmpdir(), LANG: "C.UTF-8" };
+  if (process.platform === "win32") for (const k of ["SystemRoot", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP", "USERPROFILE", "LOCALAPPDATA", "APPDATA"]) if (process.env[k]) env[k] = process.env[k]!;
+  return env as unknown as NodeJS.ProcessEnv;
+}
+
+/** A path reported by an analyzer, relative to `dir`, with forward slashes (how Brody stores paths on every OS). */
+const relPosix = (dir: string, file: string) => path.relative(dir, path.resolve(dir, file)).split(path.sep).join("/");
+
+/**
+ * Extract files into a private temp directory without blocking the event loop. A file whose name this OS cannot create
+ * (Windows rejects "a:b.py", "con.go", trailing dots) is skipped, never allowed to abort the whole review.
+ */
 async function writeTemp(files: LoadedFile[]): Promise<string> {
   // realpath: on macOS the temp dir is a symlink, and analyzers report resolved paths.
   const dir = await fsp.realpath(await fsp.mkdtemp(path.join(os.tmpdir(), "brody-analyze-")));
@@ -56,8 +72,12 @@ async function writeTemp(files: LoadedFile[]): Promise<string> {
     const target = path.resolve(dir, f.path);
     if (!target.startsWith(dir + path.sep)) continue; // defence in depth against traversal
     const parent = path.dirname(target);
-    if (!made.has(parent)) { await fsp.mkdir(parent, { recursive: true }); made.add(parent); }
-    await fsp.writeFile(target, f.text);
+    try {
+      if (!made.has(parent)) { await fsp.mkdir(parent, { recursive: true }); made.add(parent); }
+      await fsp.writeFile(target, f.text);
+    } catch {
+      continue; // not representable on this file system; the file is still reviewed by every in-process check
+    }
     if (++n % 200 === 0) await new Promise<void>((r) => setImmediate(r));
   }
   return dir;
@@ -153,6 +173,8 @@ export async function runPython(files: LoadedFile[]): Promise<{ findings: Findin
   try {
     const py = await run(config.staticAnalysis.pythonPath, ["-I", "-c", PY_AST, ...targets.map((t) => t.path)], { cwd: dir, timeoutMs: 60000 });
     if (py.missing) statuses.push({ name: "python-ast", status: "unavailable", detail: `${config.staticAnalysis.pythonPath} was not found on PATH.`, findings: 0 });
+    // A non-zero exit with no JSON (the Windows Store "python3" alias, a broken install) did not check anything.
+    else if (py.code !== 0 && !py.stdout.trim()) statuses.push({ name: "python-ast", status: "unavailable", detail: `${config.staticAnalysis.pythonPath} did not run (exit ${py.code}): ${py.stderr.trim().slice(0, 160) || "no output"}. Set PYTHON_PATH to a working Python 3.`, findings: 0 });
     else {
       try {
         const errs = JSON.parse(py.stdout || "[]") as { path: string; line: number; msg: string }[];
@@ -164,12 +186,14 @@ export async function runPython(files: LoadedFile[]): Promise<{ findings: Findin
     }
     const ruff = await run(config.staticAnalysis.ruffPath, ["check", "--isolated", "--no-cache", "--output-format", "json", "--select", "E9,F63,F7,F82,F401,F811,F841,B006,B008,B015,B018,B023,B904,S102,S103,S301,S302,S307,S324,S501,S506,S602,S604,S605,S608,S701,PLE,RUF006", "."], { cwd: dir, timeoutMs: 90000 });
     if (ruff.missing) statuses.push({ name: "ruff", status: "unavailable", detail: `${config.staticAnalysis.ruffPath} was not found on PATH; install ruff to enable Python linting.`, findings: 0 });
+    // Ruff exits 1 when it reports violations; anything else without output is a failure, not a clean run.
+    else if (ruff.code !== 0 && ruff.code !== 1 && !ruff.stdout.trim()) statuses.push({ name: "ruff", status: "error", detail: `Ruff failed (exit ${ruff.code}): ${ruff.stderr.trim().slice(0, 200)}`, findings: 0 });
     else {
       try {
         const items = JSON.parse(ruff.stdout || "[]") as { code: string; message: string; filename: string; location: { row: number }; end_location?: { row: number } }[];
         let n = 0;
         for (const it of items) {
-          const rel = path.relative(dir, it.filename);
+          const rel = relPosix(dir, it.filename);
           if (!textOf.has(rel)) continue;
           // Python's own parser already reported syntax errors for this file; do not duplicate them.
           if (it.code === "invalid-syntax" && findings.some((f) => f.analyzer === "python-ast" && f.filePath === rel)) continue;
@@ -203,12 +227,12 @@ export async function runGo(files: LoadedFile[]): Promise<{ findings: FindingDra
   const dir = await writeTemp(targets);
   const findings: FindingDraft[] = [];
   try {
-    const gofmtPath = config.staticAnalysis.goPath.replace(/go$/, "gofmt");
+    const gofmtPath = config.staticAnalysis.goPath.replace(/go(\.exe)?$/i, "gofmt$1");
     const res = await run(gofmtPath, ["-e", "-l", "."], { cwd: dir, timeoutMs: 60000 });
     if (res.missing) return { findings, statuses: [{ name: "gofmt", status: "unavailable", detail: "gofmt was not found on PATH; Go syntax checking was skipped.", findings: 0 }, vet] };
     const textOf = new Map(targets.map((f) => [f.path, f.text!]));
     for (const m of res.stderr.matchAll(/^(.+?):(\d+):(\d+):\s*(.+)$/gm)) {
-      const rel = m[1].replace(/^\.\//, "");
+      const rel = relPosix(dir, m[1]);
       if (!textOf.has(rel)) continue;
       const line = Number(m[2]);
       findings.push({ title: `Go syntax error: ${m[4].slice(0, 80)}`, category: "Correctness", severity: "High", confidence: "High", origin: "static", analyzer: "gofmt", filePath: rel, startLine: line, endLine: line, evidence: textOf.get(rel)!.split("\n").slice(Math.max(0, line - 2), line + 1).map((l, i) => `${Math.max(1, line - 1) + i}: ${l.slice(0, 200)}`).join("\n"), whatHappens: m[4], whyItMatters: "Go source that does not parse cannot be built.", remediation: "Fix the syntax error.", verification: "verified", verificationNote: "Reported by gofmt -e (syntax only)." });

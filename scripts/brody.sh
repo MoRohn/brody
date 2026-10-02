@@ -34,7 +34,17 @@ LOG_FILE="data/brody.log"
 say() { printf '%s\n' "$*"; }
 fail() { printf 'brody: %s\n' "$*" >&2; exit 1; }
 
-listener_pid() { lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1; }
+# The process listening on $PORT: lsof where it exists (macOS, most desktops), else ss or fuser (minimal Linux images
+# often have no lsof), else the PID file if that process is still alive.
+listener_pid() {
+  local pid=""
+  if command -v lsof >/dev/null 2>&1; then pid="$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1)"
+  elif command -v ss >/dev/null 2>&1; then pid="$(ss -ltnpH "sport = :$PORT" 2>/dev/null | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -1)"
+  elif command -v fuser >/dev/null 2>&1; then pid="$(fuser "$PORT/tcp" 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$' | head -1)"
+  fi
+  if [ -z "$pid" ] && [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then pid="$(cat "$PID_FILE")"; fi
+  printf '%s' "$pid"
+}
 
 healthy() {
   # Loopback addresses always pass the host check, so this works before /etc/hosts is set up.

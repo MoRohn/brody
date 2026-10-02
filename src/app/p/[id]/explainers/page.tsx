@@ -8,14 +8,37 @@ import { api, useApi } from "@/lib/client";
 import type { ModeRecommendation } from "@/lib/explainer/types";
 
 interface Row { id: string; sourceRunId: string; title: string; audience: string; router: ModeRecommendation; ready: { id: string; urls: Record<string, string | string[]>; durationMs?: number } | null; latest: { id: string; status: string } | null; updatedAt: number }
-interface Settings { saved: Record<string, string>; effective: { execution: string; privacy: string; ttsProvider: string; renderer: string }; options: { execution: string[]; privacy: string[]; ttsProviders: string[] }; voices: { id: string; label: string; local: boolean; wordTimings: boolean; available: boolean; reason: string | null }[]; renderers: { id: string; label: string; available: boolean; reason: string | null }[] }
+interface SetupInfo { ffmpeg: string | null; ffmpegProblem: string | null; venv: string; autoSetup: { run: boolean; reason: string }; setup: { state: string; outcome?: string; message?: string; log: string[]; trigger?: string } }
+interface Settings { tools: SetupInfo; saved: Record<string, string>; effective: { execution: string; privacy: string; ttsProvider: string; renderer: string }; options: { execution: string[]; privacy: string[]; ttsProviders: string[] }; voices: { id: string; label: string; local: boolean; wordTimings: boolean; available: boolean; reason: string | null }[]; renderers: { id: string; label: string; available: boolean; reason: string | null }[] }
 
 const SOURCE_LABEL: Record<string, string> = { question: "Ask answer", file: "File", area: "Functional area", module: "Folder", finding: "Finding", system: "Whole system" };
 const EXEC: Record<string, string> = { local: "Local only: narration never leaves this machine", hybrid: "Hybrid: local voices first, cloud voices only when allowed", cloud: "Cloud: use a configured cloud voice when privacy allows" };
 const PRIVACY: Record<string, string> = { "local-only": "Never send narration to a cloud service", ask: "Ask each time (a checkbox on the video form)", allow: "Allow configured cloud voices; secrets are always removed" };
 
+function ToolsSetup({ tools, onChange }: { tools: SetupInfo; onChange: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const running = tools.setup.state === "checking" || tools.setup.state === "installing";
+  const start = async () => { setBusy(true); setErr(""); try { await api("/api/explainer/setup", { method: "POST", body: "{}" }); onChange(); } catch (e) { setErr((e as Error).message); } setBusy(false); };
+  return (
+    <div className="space-y-1.5 rounded-xl border border-line p-3" data-testid="explainer-tools">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold">Tools</span>
+        <Chip tone={tools.ffmpeg && !tools.ffmpegProblem ? "ok" : "danger"}>FFmpeg {tools.ffmpeg ?? "missing"}</Chip>
+        {running ? <span className="flex items-center gap-1.5 text-muted"><span className="spinner text-[var(--accent)]" />{tools.setup.message}</span> : tools.setup.message && <span className="text-muted">{tools.setup.message}</span>}
+        <button className="btn ml-auto py-0.5 text-xs" onClick={start} disabled={busy || running} aria-busy={busy || running} data-testid="explainer-setup-run"><Icon name="refresh" size={13} />{running ? "Setting up" : "Check and set up now"}</button>
+      </div>
+      {tools.ffmpegProblem && <p className="text-xs" role="status" style={{ color: "var(--crit)" }}>{tools.ffmpegProblem}</p>}
+      <p className="text-xs text-muted">Brody checks these when it starts and installs Manim into <span className="mono">{tools.venv}</span> by itself when it is missing ({tools.autoSetup.run ? "automatic setup is on here" : `automatic setup is off here: ${tools.autoSetup.reason}`}). It never installs system packages.</p>
+      {tools.setup.log.length > 0 && <details><summary className="cursor-pointer text-xs text-muted">Setup log</summary><pre className="max-h-48 overflow-auto text-[11.5px]">{tools.setup.log.join("\n")}</pre></details>}
+      {err && <div role="alert" style={{ color: "var(--crit)" }}>{err}</div>}
+    </div>
+  );
+}
+
 function RoutingSettings() {
-  const s = useApi<Settings>("/api/explainer/settings");
+  const [poll, setPoll] = useState(false);
+  const s = useApi<Settings>(`/api/explainer/settings${poll ? "?k=1" : ""}`, { pollMs: poll ? 2000 : undefined, stop: (d) => !["checking", "installing"].includes(d.tools.setup.state), keepPrevious: true });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   if (s.error) return <ErrorBox error={s.error} />;
@@ -39,6 +62,7 @@ function RoutingSettings() {
           <select className="input" value={d.effective.renderer} disabled={busy} onChange={(e) => save({ renderer: e.target.value === "auto" ? null : e.target.value })}><option value="auto">Automatic per scene</option>{d.renderers.map((r) => <option key={r.id} value={r.id} disabled={!r.available}>{r.label}</option>)}</select>
         </label>
       </div>
+      <ToolsSetup tools={d.tools} onChange={() => { setPoll(true); s.reload(); }} />
       <table className="tbl">
         <thead><tr><th>Voice</th><th>Runs</th><th>Timing</th><th>Status</th></tr></thead>
         <tbody>{d.voices.map((v) => <tr key={v.id}><td>{v.label}</td><td>{v.local ? "on this machine" : "cloud"}</td><td>{v.wordTimings ? "word-level, measured" : "sentence-level"}</td><td>{v.available ? <Chip tone="ok">available</Chip> : <span className="text-muted">{v.reason}</span>}</td></tr>)}

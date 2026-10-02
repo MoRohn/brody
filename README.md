@@ -104,6 +104,10 @@ npm run dev                 # http://localhost:3003
 
 Open **http://localhost:3003**. Brody always answers on loopback (`localhost`, `127.0.0.1`, `[::1]`) and on the names in `ALLOWED_HOSTS` (default `brody`), and refuses any other host name to block DNS rebinding. To use **http://brody:3003**, make the name resolve once with `echo "127.0.0.1 brody" | sudo tee -a /etc/hosts`; set `ALLOWED_HOSTS=` (empty) to turn the check off, for example when reaching Brody from another machine by IP.
 
+**Windows** works the same in PowerShell or cmd: `npm install`, then `npm run dev`, or `npm run build` and `npm start` for production (the `start brody` helper below is for macOS and Linux). Every npm script is plain Node, so no bash or WSL is needed. Install Ruff with `pip install ruff` and FFmpeg with `winget install Gyan.FFmpeg` for explainer videos. The repository's `.gitattributes` keeps line endings consistent across systems.
+
+Dependencies install without running their install scripts (`.npmrc`: `ignore-scripts=true`): `better-sqlite3` ships prebuilt binaries for macOS, Windows and Linux, and the tree-sitter grammars are used as WebAssembly, so nothing is compiled and no build tools are needed.
+
 Settings are read from the shell first, then `.env.local`, then `.env`, by `npm run dev`/`start`, the CLI scripts, `start brody` and Docker Compose alike, so `PORT` and `ALLOWED_HOSTS` can live in either file. Then upload `fixtures/sample-shop`, a small, deliberately flawed shop backend, to see the whole workflow.
 
 ### One command, in the background
@@ -114,7 +118,7 @@ brody stop              # also: brody status | restart | logs | open
 start brody --no-open   # or set BRODY_OPEN=0
 ```
 
-`start brody` and `brody` point at `scripts/brody.sh`; install them elsewhere with `ln -s "$(pwd)/scripts/brody.sh" ~/.local/bin/brody`. Inside the repository, `npm run brody` does the same. Logs are in `data/brody.log`.
+On macOS and Linux, `start brody` and `brody` point at `scripts/brody.sh`; install them elsewhere with `ln -s "$(pwd)/scripts/brody.sh" ~/.local/bin/brody`. Inside the repository, `npm run brody` does the same. Logs are in `data/brody.log`.
 
 ### Command line
 
@@ -122,7 +126,7 @@ start brody --no-open   # or set BRODY_OPEN=0
 npm run analyze -- ./path/to/project --out ./report   # CODEBASE_REPORT.md, report.pdf, report.docx, report.html, report.json
 npm run convert -- notes.md                            # any Markdown file to PDF and Word with the same renderers
 npm run worker                                         # optional standalone job worker (EMBEDDED_WORKER=off on the web server)
-npm run explainer:setup                                # check FFmpeg and install Manim for explainer videos (optional)
+npm run explainer:setup                                # check FFmpeg and a voice, install Manim (Brody also does this by itself on start)
 npm run explainer:mcp                                  # the explainer tools over MCP (stdio), for agents
 ```
 
@@ -217,14 +221,14 @@ Imported code is **untrusted data** and is never executed.
 
 ```bash
 npm run validate    # everything below with zero warnings allowed, plus both production builds and the performance budgets
-npm test            # 379 unit and integration tests, including formal verification against the real Lean kernel
+npm test            # 493 unit and integration tests, including formal verification against the real Lean kernel
 npm run test:e2e    # Playwright: the full workflow and downloads, 4 widths x 5 brightness levels, axe accessibility, keyboard, performance budgets
 npm run benchmark -- --budget 200 1000   # pipeline speed and memory, failing if a budget is exceeded
 npm run verify:ai   # live check of your AI provider on the sample repository (billable: about $3 with gpt-5)
 npm run screenshots -- --url http://brody:3003 --shop <id> --self <id>   # regenerate the images in this README
 ```
 
-CI runs `npm run validate` and the browser suite on every push. The full validation of this repository (syntax, correctness, performance, styling, accessibility, live AI behaviour and cost, downloads, Docker) is in [`docs/validation/VALIDATION_REPORT.pdf`](docs/validation/VALIDATION_REPORT.pdf), with Brody's analysis of its own code in [`docs/validation/self-analysis/`](docs/validation/self-analysis). Headline numbers: 3,000 source files analyse in about 6 seconds; every page loads in under 60 ms with 159 to 232 KB of JavaScript; no serious or critical accessibility violations at any brightness level; a live `gpt-5` analysis of the sample repository costs about $3.30.
+CI runs `npm run validate` and the browser suite on every push, and the tests and production build on macOS and Windows as well as Linux. The full validation of this repository (syntax, correctness, performance, styling, accessibility, live AI behaviour and cost, downloads, Docker) is in [`docs/validation/VALIDATION_REPORT.pdf`](docs/validation/VALIDATION_REPORT.pdf), with Brody's analysis of its own code in [`docs/validation/self-analysis/`](docs/validation/self-analysis). Headline numbers: 3,000 source files analyse in about 6 seconds; every page loads in under 60 ms with 159 to 232 KB of JavaScript; no serious or critical accessibility violations at any brightness level; a live `gpt-5` analysis of the sample repository costs about $3.30.
 
 ## Project layout
 

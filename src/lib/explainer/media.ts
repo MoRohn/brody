@@ -20,12 +20,42 @@ export interface RunOptions { timeoutMs?: number; signal?: AbortSignal; input?: 
 export interface RunResult { code: number; stdout: Buffer; stderr: string; ms: number }
 
 /** A minimal environment for media and renderer subprocesses: enough to find binaries and fonts, nothing secret. */
+/** Variables a subprocess needs to find binaries, fonts, temp space, the user profile and a network proxy; never keys. */
+const SAFE_ENV = [
+  "PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "FONTCONFIG_PATH", "FONTCONFIG_FILE", "XDG_CACHE_HOME", "PKG_CONFIG_PATH", "DYLD_FALLBACK_LIBRARY_PATH", "LD_LIBRARY_PATH",
+  // Windows: programs (Python included) fail or misbehave without these.
+  "SystemRoot", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "ProgramFiles", "ProgramFiles(x86)", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE",
+  // Package installs behind a proxy.
+  "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "PIP_INDEX_URL", "PIP_EXTRA_INDEX_URL", "UV_INDEX_URL", "UV_CACHE_DIR",
+];
+
 export function safeEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
-  const keep = ["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "FONTCONFIG_PATH", "FONTCONFIG_FILE", "XDG_CACHE_HOME", "PKG_CONFIG_PATH", "DYLD_FALLBACK_LIBRARY_PATH", "LD_LIBRARY_PATH"];
   const env: Record<string, string> = {};
-  for (const k of keep) if (process.env[k]) env[k] = process.env[k]!;
+  for (const k of SAFE_ENV) if (process.env[k]) env[k] = process.env[k]!;
   env.LC_ALL ??= "C";
   return { ...env, ...extra } as unknown as NodeJS.ProcessEnv;
+}
+
+let encoderCheck: { at: number; bin: string; problem: string | null } | undefined;
+
+/**
+ * Why this FFmpeg cannot make explainer videos, or null when it can: it must run and have the H.264 (libx264) and AAC
+ * encoders (Fedora's default ffmpeg-free has no libx264). Cached for five minutes.
+ */
+export async function ffmpegProblem(): Promise<string | null> {
+  const bin = explainerConfig().ffmpeg;
+  if (encoderCheck && encoderCheck.bin === bin && Date.now() - encoderCheck.at < 5 * 60_000) return encoderCheck.problem;
+  let problem: string | null;
+  try {
+    const r = await run(bin, ["-hide_banner", "-encoders"], { timeoutMs: 15_000 });
+    const list = r.stdout.toString();
+    const lacking = [/\blibx264\b/.test(list) ? "" : "H.264 (libx264)", /\baac\b/.test(list) ? "" : "AAC"].filter(Boolean);
+    problem = r.code !== 0 ? `ffmpeg did not run (exit ${r.code}).` : lacking.length ? `This FFmpeg has no ${lacking.join(" or ")} encoder; install a full build (npm run explainer:setup names the command for this system).` : null;
+  } catch {
+    problem = "FFmpeg is not installed (npm run explainer:setup names the install command for this system).";
+  }
+  encoderCheck = { at: Date.now(), bin, problem };
+  return problem;
 }
 
 export function run(bin: string, args: string[], o: RunOptions = {}): Promise<RunResult> {

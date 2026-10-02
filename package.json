@@ -16,14 +16,14 @@
     "verify:ai": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/verify-ai.mts",
     "db:generate": "drizzle-kit generate",
     "benchmark": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/benchmark.mts",
-    "validate": "bash scripts/validate.sh",
+    "validate": "node tools/validate.mjs",
     "lockfile:check": "node scripts/lockfile.mjs check",
     "lockfile:fix": "node scripts/lockfile.mjs fix",
     "screenshots": "tsx scripts/screenshots.mts",
     "convert": "tsx scripts/convert.mts",
     "brody": "bash scripts/brody.sh",
     "explainer:mcp": "tsx scripts/explainer-mcp.mts",
-    "explainer:setup": "bash scripts/setup-explainer.sh"
+    "explainer:setup": "node tools/setup-explainer.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

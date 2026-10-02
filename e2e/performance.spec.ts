@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { execFileSync } from "node:child_process";
+import { zipDirectory } from "./zip";
 import os from "node:os";
 import path from "node:path";
 
@@ -10,7 +10,7 @@ let base = "";
 
 test.beforeAll(async ({ browser }) => {
   const zip = path.join(os.tmpdir(), `perf-shop-${Date.now()}.zip`);
-  execFileSync("zip", ["-qr", zip, ".", "-x", "*.DS_Store"], { cwd: path.resolve("fixtures/sample-shop") });
+  zipDirectory(path.resolve("fixtures/sample-shop"), zip);
   const page = await browser.newPage();
   await page.goto("http://localhost:" + (process.env.E2E_PORT ?? 3211) + "/");
   await page.getByRole("tab", { name: "ZIP archive" }).click();

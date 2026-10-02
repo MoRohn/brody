@@ -1,0 +1,16 @@
+# Text files are stored and checked out with LF on every OS, so shell scripts run under Git Bash and WSL, fixtures and
+# test expectations are byte-identical, and lock files never churn. Windows batch files need CRLF.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+# Binary assets
+*.png binary
+*.jpg binary
+*.ico binary
+*.pdf binary
+*.docx binary
+*.zip binary
+*.wasm binary
+*.ttf binary
+*.woff2 binary
