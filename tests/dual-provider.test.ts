@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -234,7 +235,7 @@ describe("provider and model selection", () => {
 
   it("persists settings with owner-only permissions and ignores a corrupt file", () => {
     updateSettings({ provider: "anthropic" });
-    expect(fs.statSync(process.env.AI_SETTINGS_PATH!).mode & 0o777).toBe(0o600);
+    expectOwnerOnly(process.env.AI_SETTINGS_PATH!);
     expect(fs.readFileSync(process.env.AI_SETTINGS_PATH!, "utf8")).not.toMatch(/key/i);
     fs.writeFileSync(process.env.AI_SETTINGS_PATH!, "{not json");
     expect(readSettings()).toEqual({});
@@ -343,3 +344,28 @@ describe("AI settings API", () => {
     expect((await getModels(new Request("http://brody/api/ai/models?provider=nope"))).status).toBe(400);
   });
 });
+
+/** POSIX mode 0600, or a Windows DACL with a single Allow ACE: the current user, with read and write. */
+function expectOwnerOnly(file: string) {
+  if (process.platform !== "win32") {
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+    return;
+  }
+  const literal = file.replace(/'/g, "''");
+  const script = `
+$ErrorActionPreference = 'Stop'
+$acl = Get-Acl -LiteralPath '${literal}'
+$rules = @($acl.Access)
+if ($rules.Count -ne 1) { Write-Output ("count:" + $rules.Count + " " + (($rules | ForEach-Object { $_.IdentityReference.Value + ":" + $_.FileSystemRights }) -join "; ")); exit 1 }
+$rule = $rules[0]
+$me = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Translate([System.Security.Principal.NTAccount]).Value
+if ($rule.IdentityReference.Value.ToLower() -ne $me.ToLower()) { Write-Output ("id:" + $rule.IdentityReference.Value); exit 1 }
+if ($rule.AccessControlType -ne 'Allow') { Write-Output ("type:" + $rule.AccessControlType); exit 1 }
+$rights = [int]$rule.FileSystemRights
+$need = [int]([System.Security.AccessControl.FileSystemRights]::Read -bor [System.Security.AccessControl.FileSystemRights]::Write)
+if (($rights -band $need) -ne $need) { Write-Output ("rights:" + $rule.FileSystemRights); exit 1 }
+Write-Output ok
+`;
+  const r = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { encoding: "utf8", windowsHide: true, timeout: 20_000 });
+  expect(`${r.stdout ?? ""}${r.stderr ?? ""}`.trim()).toBe("ok");
+}

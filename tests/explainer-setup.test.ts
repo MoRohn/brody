@@ -45,6 +45,14 @@ describe("when automatic setup runs", () => {
 });
 
 describe("the setup run", () => {
+  it("checks Windows voices from the registry and times out a stuck probe", () => {
+    const src = fs.readFileSync(setupScript()!, "utf8");
+    // Constructing SpeechSynthesizer initializes the audio device and hung the Windows CI job for the whole test timeout.
+    expect(src).not.toContain("SpeechSynthesizer");
+    expect(src).toMatch(/Speech\\+Voices\\+Tokens/);
+    expect(src).toMatch(/timeout \?\? 20_000/);
+  });
+
   it("checks with the real script, reports the outcome, and remembers it", async (ctx) => {
     if (!hasFfmpeg) ctx.skip();
     const s = await runExplainerSetup("manual");
