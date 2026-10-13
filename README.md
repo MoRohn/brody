@@ -10,7 +10,12 @@ Evidence-backed code review, Lean 4 proofs of real defects, plain-language syste
 interactive code maps and executive reports, with the cost of every AI request shown live.
 
 [![CI](https://github.com/MoRohn/brody/actions/workflows/ci.yml/badge.svg)](https://github.com/MoRohn/brody/actions/workflows/ci.yml)
-&nbsp;Next.js 16 · TypeScript · SQLite · Lean 4 · Claude or OpenAI
+[![License: MIT](https://img.shields.io/badge/License-MIT-1B4965)](LICENSE)
+[![Website](https://img.shields.io/badge/website-morohn.github.io%2Fbrody-006C96)](https://morohn.github.io/brody)
+
+Next.js 16 · TypeScript · SQLite · Lean 4 · Claude or OpenAI
+
+**[Website](https://morohn.github.io/brody)** · [Source](https://github.com/MoRohn/brody) · [MIT License](LICENSE)
 
 </div>
 
@@ -26,7 +31,7 @@ INGEST → PARSE → SYMBOL & DEPENDENCY GRAPH → RETRIEVE → ANALYZE → PROV
 
 ## Contents
 
-[Tour](#tour) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Features](#features) · [Configuration](#configuration) · [Security model](#security-model) · [Testing and validation](#testing-and-validation) · [Known limitations](#known-limitations)
+[Website](https://morohn.github.io/brody) · [Tour](#tour) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Features](#features) · [Configuration](#configuration) · [Security model](#security-model) · [Testing and validation](#testing-and-validation) · [Known limitations](#known-limitations) · [License](#license)
 
 ## Tour
 
@@ -250,6 +255,7 @@ src/lib/deck        the executive deck (HTML, PowerPoint, PDF)
 src/lib/jobs        persisted job pipeline, worker, cancellation, recovery
 src/lib/explainer   Explanation IR, router, narration, voices, timing, beats, scenes, renderers, video jobs
 src/app             Next.js UI and API routes
+site                static GitHub Pages site (`node site/build.mjs`; not part of the Next.js build)
 fixtures/sample-shop  the demonstration repository
 ```
 
@@ -264,3 +270,7 @@ fixtures/sample-shop  the demonstration repository
 * Route and model detection covers the frameworks and ORMs listed in `src/lib/discover/catalog.ts`; others appear as ordinary symbols.
 * Storage is SQLite with in-process retrieval, chosen for a one-command install; it suits repositories up to tens of thousands of files.
 * The interface is verified in Chrome only.
+
+## License
+
+[MIT](LICENSE). Copyright 2026 Rohn Springfield.

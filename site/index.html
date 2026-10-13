@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Brody — repository intelligence you can check</title>
+  <meta name="description" content="Brody reviews a repository with evidence, Lean 4 proofs, plain-language explanations, and code maps. It never executes the code it analyzes.">
+  <link rel="canonical" href="https://morohn.github.io/brody/">
+  <meta name="theme-color" content="#d2e0e9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#15283a" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Brody">
+  <meta property="og:title" content="Brody — repository intelligence you can check">
+  <meta property="og:description" content="Evidence-backed code review, Lean 4 proofs of real defects, plain-language explanations, and interactive code maps. Brody never executes the code it analyzes.">
+  <meta property="og:url" content="https://morohn.github.io/brody/">
+  <meta property="og:image" content="https://morohn.github.io/brody/media/og.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Brody code review: a verified finding with evidence, business impact, remediation, and a patch checked against the real file.">
+  <meta property="og:locale" content="en_US">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Brody — repository intelligence you can check">
+  <meta name="twitter:description" content="Evidence-backed code review, Lean 4 proofs, plain-language explanations, and code maps. The code under analysis is never executed.">
+  <meta name="twitter:image" content="https://morohn.github.io/brody/media/og.jpg">
+  <meta name="twitter:image:alt" content="Brody code review: a verified finding with evidence, business impact, remediation, and a patch checked against the real file.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareSourceCode",
+    "name": "Brody",
+    "description": "Repository intelligence: evidence-backed code review, Lean 4 proofs of real defects, plain-language system explanations, interactive code maps, and executive reports. Imported code is never executed.",
+    "url": "https://morohn.github.io/brody/",
+    "codeRepository": "https://github.com/MoRohn/brody",
+    "programmingLanguage": "TypeScript",
+    "runtimePlatform": "Node.js",
+    "license": "https://opensource.org/licenses/MIT",
+    "copyrightNotice": "Copyright (c) 2026 Rohn Springfield",
+    "author": { "@type": "Person", "name": "Rohn Springfield" },
+    "isAccessibleForFree": true
+  }
+  </script>
+  <script>
+    document.documentElement.classList.add("js");
+    try {
+      var stored = localStorage.getItem("brody-site-theme");
+      var theme = stored === "light" || stored === "dark"
+        ? stored
+        : (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    } catch (e) {}
+  </script>
+</head>
+<body id="top">
+  <a class="skip" href="#content">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="Brody">
+      <span class="wordmark" aria-hidden="true">Br<span class="wordmark-o"></span>dy</span>
+      <span class="tagline">Repo intel and code review, bro</span>
+    </a>
+    <div class="header-actions">
+      <nav class="nav" aria-label="On this page">
+        <details open>
+          <summary class="menu-summary">Menu</summary>
+          <ul class="nav-links">
+            <li><a href="#features">Features</a></li>
+            <li><a href="#how">How it works</a></li>
+            <li><a href="#quick-start">Quick start</a></li>
+            <li><a href="#security">Security</a></li>
+            <li class="nav-github"><a href="https://github.com/MoRohn/brody">GitHub</a></li>
+          </ul>
+        </details>
+        <script>
+          (function () {
+            var menu = document.currentScript.previousElementSibling;
+            if (menu && window.matchMedia("(max-width: 1040px)").matches) menu.open = false;
+          })();
+        </script>
+      </nav>
+      <a class="btn btn-ghost header-github" href="https://github.com/MoRohn/brody">GitHub</a>
+      <button type="button" class="theme-toggle" aria-pressed="false" aria-label="Switch to dark theme">
+        <span class="theme-label">Dark</span>
+      </button>
+    </div>
+  </header>
+
+  <main id="content">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="wrap-wide hero-grid">
+        <div>
+          <p class="eyebrow">Open source · TypeScript · Next.js</p>
+          <h1 id="hero-title">Repository intelligence you can check against the code.</h1>
+          <p class="lede">Give Brody a folder, a ZIP, or a GitHub repository. It parses with real parsers, builds a symbol and dependency graph, reviews with deterministic analyzers and optional AI, and proves what it can with Lean 4. A claim that does not cite lines that exist is dropped. The code it analyzes is never executed.</p>
+          <div class="actions">
+            <a class="btn btn-primary" href="#quick-start">Quick start</a>
+            <a class="btn btn-ghost" href="https://github.com/MoRohn/brody">View the source</a>
+          </div>
+          <ul class="chips">
+            <li>Evidence on every finding</li>
+            <li>Lean 4 proofs</li>
+            <li>Live AI cost</li>
+          </ul>
+        </div>
+        <figure class="frame">
+          <img src="media/review.webp" width="2880" height="2000" alt="Code review: a verified finding with evidence, business impact, remediation, and a patch validated against the real file." fetchpriority="high">
+          <figcaption>Code review. Static analysis, AI review, and formal proofs stay labelled apart.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <div class="promises">
+      <ul class="wrap promise-grid">
+        <li class="promise">
+          <strong>Citations, or it does not ship</strong>
+          <p>An AI finding survives only if its file exists, the quoted evidence is in that file, and a suggested patch applies to the real source. Otherwise it is dropped or marked Needs verification.</p>
+        </li>
+        <li class="promise">
+          <strong>Proofs go through Lean’s kernel</strong>
+          <p>A theorem counts only when Lean accepts it with nothing beyond its standard axioms. A separate audit checks that the model matches the source, and replays every counterexample on the original code.</p>
+        </li>
+        <li class="promise">
+          <strong>The model never sees the whole repo</strong>
+          <p>It reasons over symbols, the call graph, routes, models, and retrieved excerpts. Repository text is wrapped as untrusted content, and detected secrets are redacted before a request is sent.</p>
+        </li>
+      </ul>
+    </div>
+
+    <section id="features">
+      <div class="wrap">
+        <div class="section-intro">
+          <p class="kicker">Features</p>
+          <h2>What you get from one analysis</h2>
+          <p>Every view below is a real Brody screen, generated from the same stored analysis. There is no separate “quality score.”</p>
+        </div>
+
+        <article class="card" style="margin-bottom: 1.4rem">
+          <h3>Findings you can trace</h3>
+          <p>Each finding has an ID, severity, confidence, the exact lines, what happens, why it matters, the business impact, a fix, and, where possible, a patch that has been applied to the real file to prove it fits. Filter by severity, category, source, status, confidence, and functional area.</p>
+          <p>An AI fix prompt condenses the open issues, with their fixes, validated patches, and evidence, into one Markdown prompt for Claude Code, Cursor, Copilot, or ChatGPT.</p>
+        </article>
+
+        <article class="split reverse">
+          <div class="copy">
+            <h3>Defects proved, not guessed</h3>
+            <p>The functions that most need it — open AI claims first, then high complexity, dense arithmetic, and names that decide amounts, limits, state, or access — are modelled in Lean 4 and checked by Lean’s kernel.</p>
+            <p>Brody can prove a guarantee, prove a concrete counterexample (the input that breaks the code, ready to become a regression test), confirm an AI claim, or remove a false positive by proving the claimed failure cannot happen. Unchanged functions reuse their proofs.</p>
+          </div>
+          <figure class="frame">
+            <img src="media/proofs.webp" width="2880" height="2480" alt="Formal proofs: a function modelled in Lean 4, its modelling assumptions, the divergences the fidelity audit weighed, and guarantees proved with the axioms each rests on." loading="lazy">
+            <figcaption>Formal proofs: the model, the fidelity audit, and the axioms each guarantee rests on.</figcaption>
+          </figure>
+        </article>
+
+        <article class="split">
+          <div class="copy">
+            <h3>See how it fits together</h3>
+            <p>The code map goes from functional areas to files to a single symbol, marks risk, exports Mermaid, and answers “if I change this, what could I affect?” System explanation has four zoom levels — the whole system, groups of files, one file, and a symbol — and every statement links to its source.</p>
+          </div>
+          <figure class="frame">
+            <img src="media/map.webp" width="2880" height="1440" alt="Code map: functional areas laid out by layer, with dependencies, risk marks, and a change-impact panel." loading="lazy">
+            <figcaption>Code map of Brody’s own repository, laid out by layer.</figcaption>
+          </figure>
+        </article>
+
+        <article class="split reverse">
+          <div class="copy">
+            <h3>Know what the run costs</h3>
+            <p>A gauge on every project page shows the tokens and estimated cost of the latest analysis, updating while it runs, with the model that answered, a per-step breakdown, and the prices used. Local or unpriced models show tokens and “cost n/a” rather than a guess.</p>
+            <p>Without an API key, every deterministic stage still runs. AI stages say plainly that they were skipped.</p>
+          </div>
+          <figure class="frame">
+            <img src="media/usage.webp" width="2880" height="1800" alt="The AI usage gauge: live tokens and estimated cost, with the model, a per-step breakdown, and the pricing basis." loading="lazy">
+            <figcaption>Live tokens, estimated cost, and the pricing basis for the run.</figcaption>
+          </figure>
+        </article>
+
+        <div class="card-grid">
+          <article class="card">
+            <p class="kicker">Security and privacy</p>
+            <h3>One assessment, two reports</h3>
+            <p>A security assessment covers overall risk and its reasons, the attack surface, OWASP Top 10 (2021) coverage, CWE-mapped findings, the controls found in the code, and a Now / Next / Later plan. A privacy review inventories personal-data fields, subjects, likely third parties, and regulatory indicators. Both are built from the same verified findings as the code review.</p>
+          </article>
+          <article class="card">
+            <p class="kicker">Ask and search</p>
+            <h3>Questions answered from the graph</h3>
+            <p>Structural questions — who depends on this, what writes to <code>orders</code>, what happens after <code>POST /checkout</code> — are answered from the graph. Open questions go to the model with retrieved excerpts. Every answer cites lines and says when the evidence is not enough. Search covers files, symbols, code, findings, and generated documentation.</p>
+          </article>
+          <article class="card">
+            <p class="kicker">Reports</p>
+            <h3>A deck for the room, files for the record</h3>
+            <p>Every view downloads as PDF, Word, Markdown, a web page, or JSON. The executive deck is a 14-slide briefing in business language, as PowerPoint with speaker notes, PDF, or a page you can present from. Each slide names the report section behind it.</p>
+          </article>
+          <article class="card">
+            <p class="kicker">Explainers</p>
+            <h3>The same result, four ways</h3>
+            <p>An Ask answer, a file, an area, a finding, or the whole system can become a clear explanation, a diagram, an interactive explainer, or a narrated video. All four come from one grounded explanation. Animation is cut to measured word timings, not a guessed speaking rate. Narration stays on the machine unless you allow a cloud voice.</p>
+          </article>
+          <article class="card">
+            <p class="kicker">Architecture</p>
+            <h3>Layers, routes, and the data model</h3>
+            <p>The architecture view maps layers, entry points, the API, an entity-relationship diagram, external services and what fails if they are down, environment variable names, ports, feature flags, CI, infrastructure, and tests.</p>
+          </article>
+          <article class="card">
+            <p class="kicker">Handoff</p>
+            <h3>A Brody bundle</h3>
+            <p>Export a project as one zip: the analysis, source with detected secrets redacted, reports, and one-click launchers. Open it in any Brody with the full interface and no re-analysis, or read the HTML report without Brody at all.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="how" aria-labelledby="how-title">
+      <div class="wrap">
+        <div class="section-intro">
+          <p class="kicker">How it works</p>
+          <h2 id="how-title">Deterministic first. Models second. Evidence last.</h2>
+          <p>Brody does not turn a repository into one giant prompt. The pipeline below is the persisted job in <code>src/lib/jobs/stages.ts</code>.</p>
+        </div>
+        <ol class="pipeline" aria-label="Analysis pipeline">
+          <li>Ingest <span class="arrow" aria-hidden="true">→</span></li>
+          <li>Parse <span class="arrow" aria-hidden="true">→</span></li>
+          <li>Symbol and dependency graph <span class="arrow" aria-hidden="true">→</span></li>
+          <li>Retrieve <span class="arrow" aria-hidden="true">→</span></li>
+          <li>Analyze <span class="arrow" aria-hidden="true">→</span></li>
+          <li>Prove <span class="arrow" aria-hidden="true">→</span></li>
+          <li>Verify <span class="arrow" aria-hidden="true">→</span></li>
+          <li>Explain <span class="arrow" aria-hidden="true">→</span></li>
+          <li>Map <span class="arrow" aria-hidden="true">→</span></li>
+          <li>Report</li>
+        </ol>
+
+        <div class="steps" style="margin-top: 1.4rem">
+          <article class="step">
+            <span class="num">1</span>
+            <div>
+              <h3>Parse what is actually there</h3>
+              <p>Files are classified, hashed, and language-detected. Tree-sitter grammars cover TypeScript and TSX, JavaScript, Python, Go, Java, C#, Ruby, Rust, PHP, CSS, HTML, JSON, and Shell. SQL, Prisma, GraphQL, Markdown, and YAML have their own parsers. Other languages use text inspection and are marked as such, never as an AST.</p>
+            </div>
+          </article>
+          <article class="step">
+            <span class="num">2</span>
+            <div>
+              <h3>Build a graph, then retrieve from it</h3>
+              <p>Imports resolve to files, including tsconfig path aliases. Calls resolve to symbols with a confidence score. ORM and query calls become reads and writes. Routes, models, entry points, external services, environment names, tests, and infrastructure are detected from those facts. Retrieval ranks excerpts with BM25, graph neighbours, and a PageRank importance prior.</p>
+            </div>
+          </article>
+          <article class="step">
+            <span class="num">3</span>
+            <div>
+              <h3>Review in layers, and say which layer spoke</h3>
+              <p>Static checks come first: built-in rules, TypeScript syntax diagnostics, ESLint with a fixed embedded config, Python <code>ast</code>, Ruff in isolated mode, <code>gofmt -e</code>, plus structural and privacy checks. Six AI passes then run over retrieved excerpts: security; privacy; reliability and correctness; performance and data; architecture and API; testing and operations. Lean 4 follows, then a verifier that re-anchors quotes and rejects patches that do not apply.</p>
+            </div>
+          </article>
+          <article class="step">
+            <span class="num">4</span>
+            <div>
+              <h3>Explain from the bottom up</h3>
+              <p>Documentation is built symbol, then file, then functional area, then architecture, then an executive summary. A deterministic baseline always exists. AI may enrich it, and statements whose evidence does not resolve to real lines are dropped. Re-analysing a changed repository reprocesses only what changed.</p>
+            </div>
+          </article>
+        </div>
+
+        <h3 style="margin-top: 2rem">The fourteen persisted stages</h3>
+        <p class="note">A refresh or a restart does not lose the job. Each stage ends done, skipped with a reason, warning, or failed.</p>
+        <ol class="stages" style="margin-top: 0.8rem">
+          <li>Importing repository</li>
+          <li>Enumerating files</li>
+          <li>Parsing source</li>
+          <li>Building symbol and dependency graph</li>
+          <li>Indexing for retrieval</li>
+          <li>Detecting architecture</li>
+          <li>Running static analysis</li>
+          <li>Reviewing code</li>
+          <li>Formally verifying complex code (Lean 4)</li>
+          <li>Verifying findings</li>
+          <li>Generating documentation</li>
+          <li>Building code map</li>
+          <li>Building executive deck</li>
+          <li>Finalizing report</li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="quick-start" aria-labelledby="start-title">
+      <div class="wrap">
+        <div class="section-intro">
+          <p class="kicker">Quick start</p>
+          <h2 id="start-title">Run it locally. It does not need a key to be useful.</h2>
+          <p>Node 24 is the version CI and the Docker image use (<code>.nvmrc</code>). AI keys are optional. Then upload <code>fixtures/sample-shop</code>, a small shop backend with deliberate flaws. Brody listens on <a href="http://localhost:3003">http://localhost:3003</a>.</p>
+        </div>
+        <div class="qs-grid">
+          <article class="card">
+            <h3>Docker</h3>
+            <p>The image includes Ruff and a Lean 4 toolchain, runs as non-root with all capabilities dropped, and keeps SQLite in the <code>brody-data</code> volume.</p>
+            <pre><code>cp .env.example .env
+docker compose up --build</code></pre>
+          </article>
+          <article class="card">
+            <h3>Local</h3>
+            <p>Dependencies install without running their install scripts. Optional: <code>ruff</code> and <code>python3</code> for Python analysis, and Lean 4 for proofs. If Lean is missing, the home page can install it.</p>
+            <pre><code>npm install
+cp .env.example .env
+npm run dev</code></pre>
+          </article>
+          <article class="card">
+            <h3>Command line</h3>
+            <p>Writes Markdown, PDF, Word, HTML, and JSON. The same npm scripts run on Windows. <code>start brody</code> is the macOS and Linux background helper.</p>
+            <pre><code>npm run analyze -- ./path/to/project --out ./report</code></pre>
+          </article>
+        </div>
+        <p class="note" style="margin-top: 1rem">Brody answers on loopback and on the names in <code>ALLOWED_HOSTS</code> (default <code>brody</code>), and refuses other host names. The <a href="https://github.com/MoRohn/brody#quick-start">README quick start</a> covers that check, Windows, and <code>start brody</code>.</p>
+        <figure class="frame" style="margin-top: 1.2rem">
+          <img src="media/home.webp" width="2880" height="1800" alt="Home: upload files, a folder, or a ZIP, import from GitHub, or open a Brody export." loading="lazy">
+          <figcaption>Start from files, a folder, a ZIP, a GitHub repository, or a Brody export.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="architecture" aria-labelledby="arch-title">
+      <div class="wrap">
+        <div class="section-intro">
+          <p class="kicker">Architecture</p>
+          <h2 id="arch-title">One Next.js process, one SQLite file</h2>
+          <p>The UI, the JSON API, and an in-process job worker share a SQLite database. Parsing uses tree-sitter WebAssembly, so install does not need a compiler. The worker can be split out with <code>EMBEDDED_WORKER=off</code> and <code>npm run worker</code>. Design notes live in <a href="https://github.com/MoRohn/brody/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a>.</p>
+        </div>
+        <div class="module-grid">
+          <div><strong>src/lib/ingest</strong><p>Upload, ZIP, and GitHub import. Classification and secret redaction.</p></div>
+          <div><strong>src/lib/parse</strong><p>Tree-sitter extractors, text fallbacks, and parse worker threads.</p></div>
+          <div><strong>src/lib/graph</strong><p>Imports, calls, data access, and importance.</p></div>
+          <div><strong>src/lib/review</strong><p>AI review passes, verification, patch checks, and dedupe.</p></div>
+          <div><strong>src/lib/formal</strong><p>Lean 4 targets, models, repair, the axiom check, and the fidelity audit.</p></div>
+          <div><strong>src/lib/explainer</strong><p>Explanation IR, narration, measured timing, and video jobs.</p></div>
+          <div><strong>src/lib/map</strong><p>Trees, graphs, change impact, and diagrams.</p></div>
+          <div><strong>src/lib/deck</strong><p>The 14-slide executive deck, from the same analysis as the report.</p></div>
+        </div>
+        <figure class="frame" style="margin-top: 1.2rem">
+          <img src="media/explain.webp" width="2880" height="1800" alt="System explanation at the whole-system level, with statements linked to source." loading="lazy">
+          <figcaption>System explanation. Four zoom levels, each statement linked to the lines it came from.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="security" aria-labelledby="security-title">
+      <div class="wrap">
+        <div class="section-intro">
+          <p class="kicker">Security model</p>
+          <h2 id="security-title">Imported code is data. It is never executed.</h2>
+          <p>ZIPs are read in memory with entry, size, and compression-ratio limits. Paths that escape the archive are rejected, and symlinks are skipped. Analyzers only parse. Repository ESLint configs are ignored because they are JavaScript. <code>mypy</code> and <code>go vet</code> are not run, because they load plugins or resolve modules.</p>
+          <p>Lean source is written by a model that read untrusted code, so constructs that can execute code or fake a proof are refused before Lean runs. Lean itself gets no inherited environment, a private temporary directory, a memory cap, a heartbeat limit, and a hard kill.</p>
+        </div>
+        <div class="limits">
+          <h3>What a result does not mean</h3>
+          <ul>
+            <li>A proof is about a model of the function. Lean checks the proof. An audit checks the model, and a proof the audit disputes is never used as a finding.</li>
+            <li>Call and data-flow edges are static and carry confidence scores. Dynamic dispatch, reflection, and routes registered at runtime are not visible.</li>
+            <li>There is no user authentication. Brody is single-tenant: anyone who can reach the port can read every project. Run it locally, or behind an authenticating proxy.</li>
+            <li>Dependency CVEs are not looked up. Brody works offline. Regulatory indicators in the privacy review are not legal advice.</li>
+            <li>Languages without a tree-sitter grammar in this repo are read as text, so their symbols are approximate.</li>
+          </ul>
+        </div>
+        <p class="note" style="margin-top: 1rem">To report a vulnerability in Brody itself, use <a href="https://github.com/MoRohn/brody/security/advisories/new">private vulnerability reporting</a>. See <a href="https://github.com/MoRohn/brody/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="footer-row">
+        <p style="margin: 0">Brody is released under the <a href="LICENSE.txt">MIT License</a>. Copyright 2026 Rohn Springfield.</p>
+        <ul class="footer-links">
+          <li><a href="https://github.com/MoRohn/brody">Source</a></li>
+          <li><a href="https://github.com/MoRohn/brody/blob/main/README.md">README</a></li>
+          <li><a href="https://github.com/MoRohn/brody/blob/main/docs/ARCHITECTURE.md">Architecture</a></li>
+          <li><a href="https://github.com/MoRohn/brody/blob/main/docs/EXPLAINER.md">Explainers</a></li>
+          <li><a href="https://github.com/MoRohn/brody/blob/main/CONTRIBUTING.md">Contributing</a></li>
+          <li><a href="LICENSE.txt">MIT License</a></li>
+        </ul>
+      </div>
+    </div>
+  </footer>
+  <script src="site.js" defer></script>
+</body>
+</html>
