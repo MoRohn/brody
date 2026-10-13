@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<!--
+  Social card for Brody. Render with `node site/render-social.mjs`.
+  1200×630 becomes site/media/og.jpg (og:image / twitter:image).
+  1280×640 becomes docs/brand/social-preview.png (GitHub Social preview).
+  Type sizes are in vw so both viewports share this layout.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Brody — repository intelligence you can check</title>
+  <style>
+    @font-face {
+      font-family: "Unbounded";
+      font-style: normal;
+      font-weight: 700;
+      src: url("../fonts/unbounded-latin.woff2") format("woff2");
+    }
+    @font-face {
+      font-family: "Playfair Display";
+      font-style: normal;
+      font-weight: 600;
+      src: url("../fonts/playfair-latin.woff2") format("woff2");
+    }
+
+    :root {
+      --navy: #1b4965;
+      --cerulean: #006c96;
+      --ink: #f4fbfe;
+      --line: #58b8e2;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; height: 100%; }
+    body {
+      overflow: hidden;
+      color: var(--ink);
+      font-family: "Unbounded", sans-serif;
+      background:
+        radial-gradient(46vw 42vw at 96% -8%, rgba(0, 108, 150, 0.72), transparent 70%),
+        linear-gradient(158deg, #12384c 0%, var(--navy) 46%, #143f58 100%);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: geometricPrecision;
+    }
+    body::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 0 46%;
+      background-image: radial-gradient(circle, rgba(143, 212, 240, 0.42) 1.2px, transparent 1.35px);
+      background-size: 26px 26px;
+      -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%);
+      mask-image: linear-gradient(90deg, transparent, #000 22%);
+      pointer-events: none;
+    }
+
+    .card {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: minmax(0, 1.22fr) minmax(0, 0.78fr);
+      column-gap: 2.4vw;
+      height: 100%;
+      padding: 5.6% 4.6% 5.2%;
+    }
+
+    .copy {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 0;
+    }
+
+    .wordmark {
+      margin: 0;
+      color: var(--ink);
+      font-weight: 700;
+      font-size: 6.15vw;
+      letter-spacing: -0.045em;
+      line-height: 0.92;
+    }
+    .wordmark-o {
+      position: relative;
+      display: inline-block;
+      width: 0.52em;
+      height: 0.52em;
+      margin: 0 0.045em 0.02em 0.03em;
+      border: 0.11em solid #fff;
+      border-radius: 999px;
+      vertical-align: 0.04em;
+      box-sizing: border-box;
+      box-shadow: 0 0 0 0.038em var(--ink), inset 0 0 0 0.038em var(--ink);
+    }
+    .wordmark-o::after {
+      content: "";
+      position: absolute;
+      inset: 50% auto auto 50%;
+      width: 0.2em;
+      height: 0.2em;
+      margin: -0.1em 0 0 -0.1em;
+      border-radius: 999px;
+      background: var(--cerulean);
+    }
+
+    .rule {
+      width: 4.6vw;
+      height: 0.72vw;
+      margin: 1.7vw 0 0;
+      border-radius: 999px;
+      background: var(--line);
+    }
+
+    h1 {
+      margin: 1.85vw 0 2.15vw;
+      color: var(--ink);
+      font-family: "Playfair Display", Georgia, serif;
+      font-weight: 600;
+      font-size: 4.45vw;
+      letter-spacing: -0.02em;
+      line-height: 1.05;
+    }
+
+    ul {
+      display: grid;
+      gap: 1.28vw;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    li {
+      display: flex;
+      align-items: center;
+      gap: 0.85vw;
+      font-size: 3.15vw;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      line-height: 1.05;
+      white-space: nowrap;
+    }
+    .mark {
+      flex: none;
+      width: 0.62em;
+      height: 0.62em;
+      border-radius: 999px;
+      background: var(--cerulean);
+      box-shadow: 0 0 0 0.13em #fff, 0 0 0 0.19em var(--ink);
+    }
+
+    .aside {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+    }
+    .graph {
+      position: absolute;
+      top: -2%;
+      right: -6%;
+      width: 108%;
+      height: 58%;
+      overflow: visible;
+    }
+    .inset {
+      position: absolute;
+      left: 0;
+      right: 2%;
+      bottom: 0;
+      width: 96%;
+      margin: 0;
+    }
+    .plate {
+      position: absolute;
+      z-index: 0;
+      left: 3.2%;
+      right: -3.4%;
+      top: 7%;
+      bottom: -5.5%;
+      border-radius: 18px;
+      background: var(--cerulean);
+    }
+    .shot {
+      position: relative;
+      z-index: 1;
+      aspect-ratio: 1240 / 827;
+      overflow: hidden;
+      border: 2px solid #e7f6fc;
+      border-radius: 16px;
+      background: #d5e4ee;
+      box-shadow: 0 18px 36px rgba(5, 22, 34, 0.38);
+    }
+    /* Crop of docs/screenshots/review.png (2880×2000): the proved finding,
+       from its title through the evidence, skipping the filter bar.
+       Source rect x=1160 y=700 w=1240 h=827. */
+    .shot img {
+      position: absolute;
+      width: calc(100% * 2880 / 1240);
+      height: calc(100% * 2000 / 827);
+      max-width: none;
+      left: calc(100% * -1160 / 1240);
+      top: calc(100% * -700 / 827);
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="copy">
+      <p class="wordmark">Br<span class="wordmark-o"></span>dy</p>
+      <div class="rule"></div>
+      <h1>Repository intelligence<br>you can check.</h1>
+      <ul>
+        <li><span class="mark" aria-hidden="true"></span>Evidence-backed review</li>
+        <li><span class="mark" aria-hidden="true"></span>Lean 4 proofs</li>
+        <li><span class="mark" aria-hidden="true"></span>Code maps</li>
+        <li><span class="mark" aria-hidden="true"></span>Live AI cost</li>
+      </ul>
+    </div>
+    <div class="aside">
+      <svg class="graph" viewBox="0 0 520 250" fill="none" aria-hidden="true">
+        <defs>
+          <g id="node">
+            <circle r="22" fill="#1b4965" stroke="#eaf6fc" stroke-width="2.3"/>
+            <circle r="15.4" fill="none" stroke="#fff" stroke-width="8"/>
+            <circle r="9" fill="none" stroke="#eaf6fc" stroke-width="2.3"/>
+            <circle r="5.5" fill="#006c96"/>
+          </g>
+        </defs>
+        <g stroke-linecap="round">
+          <path d="M78 68C148 68 148 40 214 40" stroke="#9fb9c9" stroke-width="2.3"/>
+          <path d="M214 40C300 40 300 86 368 92" stroke="#9fb9c9" stroke-width="2.3"/>
+          <path d="M78 68C112 68 112 156 158 164" stroke="#58b8e2" stroke-width="3.1"/>
+          <path d="M158 164C230 164 230 186 304 186" stroke="#58b8e2" stroke-width="3.1"/>
+          <path d="M368 92C346 92 346 186 304 186" stroke="#9fb9c9" stroke-width="2.3"/>
+          <path d="M304 186C386 186 386 156 458 148" stroke="#58b8e2" stroke-width="3.1"/>
+        </g>
+        <use href="#node" transform="translate(78 68) scale(1.02)"/>
+        <use href="#node" transform="translate(214 40) scale(0.7)"/>
+        <use href="#node" transform="translate(368 92) scale(0.86)"/>
+        <use href="#node" transform="translate(158 164) scale(0.76)"/>
+        <use href="#node" transform="translate(304 186) scale(1.12)"/>
+        <use href="#node" transform="translate(458 148) scale(0.66)"/>
+      </svg>
+      <figure class="inset">
+        <div class="plate"></div>
+        <div class="shot">
+          <img src="../../docs/screenshots/review.png" alt="">
+        </div>
+      </figure>
+    </div>
+  </main>
+</body>
+</html>

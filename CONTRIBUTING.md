@@ -54,9 +54,12 @@ The GitHub Pages site is static HTML in `site/`. It is not part of the Next.js b
 
 ```bash
 node site/build.mjs           # writes site/dist; uses ffmpeg when it is installed
+node site/render-social.mjs   # redraws the social cards from site/social/card.html
 ```
 
 Product screenshots come from `docs/screenshots/`. Do not invent figures. Deploy is `.github/workflows/pages.yml`.
+
+The link preview is `site/media/og.jpg` (1200x630), copied into the built site as `media/og.jpg`. GitHub's Social preview image is `docs/brand/social-preview.png` (1280x640). Both are rendered from `site/social/card.html` by Playwright (`npm install`, then `npx playwright install chromium`, or a local Google Chrome). Re-run the renderer after changing the card or the review screenshot it crops, and commit both images. The site build checks their dimensions and that each is under 300KB.
 
 ## Pull requests
 
