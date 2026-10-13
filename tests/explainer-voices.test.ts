@@ -67,15 +67,22 @@ describe("Windows speech engine", () => {
     expect(SAPI_SCRIPT).toContain("AudioPosition");
   });
   it.runIf(process.platform === "win32")("speaks with measured word timings", async (ctx) => {
-    const v = new WindowsSpeechProvider();
-    const reason = await v.unavailableReason();
-    if (reason) { console.warn(reason); ctx.skip(); }
-    const tokens = tokenize("The pod asks for nvidia.com/gpu: 1. It uses twelve percent.");
-    const r = await v.synthesize({ text: spokenText(tokens), workDir: path.join(dir, "sapi") });
-    expect(r.timing).toEqual({ source: "provider", granularity: "word" });
-    expect(r.words.length).toBeGreaterThan(8);
-    for (let i = 1; i < r.words.length; i++) expect(r.words[i].startMs).toBeGreaterThanOrEqual(r.words[i - 1].startMs);
-    const n = normalizeTiming(tokens, r.words, { sectionId: "s", offsetMs: 0, durationMs: r.durationMs });
-    expect(n.interpolated).toBe(0);
-  }, 60_000);
+    // A cold speech engine on a headless runner spends a long time opening the audio device. The assertions still
+    // require measured word timings; this only waits long enough for that first start.
+    process.env.EXPLAINER_TTS_TIMEOUT_MS = "180000";
+    try {
+      const v = new WindowsSpeechProvider();
+      const reason = await v.unavailableReason();
+      if (reason) { console.warn(reason); ctx.skip(); }
+      const tokens = tokenize("The pod asks for nvidia.com/gpu: 1. It uses twelve percent.");
+      const r = await v.synthesize({ text: spokenText(tokens), workDir: path.join(dir, "sapi") });
+      expect(r.timing).toEqual({ source: "provider", granularity: "word" });
+      expect(r.words.length).toBeGreaterThan(8);
+      for (let i = 1; i < r.words.length; i++) expect(r.words[i].startMs).toBeGreaterThanOrEqual(r.words[i - 1].startMs);
+      const n = normalizeTiming(tokens, r.words, { sectionId: "s", offsetMs: 0, durationMs: r.durationMs });
+      expect(n.interpolated).toBe(0);
+    } finally {
+      delete process.env.EXPLAINER_TTS_TIMEOUT_MS;
+    }
+  }, 200_000);
 });

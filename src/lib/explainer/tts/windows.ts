@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { explainerConfig } from "../config";
 import { readWavFile } from "../audio";
-import { run, toPcmWav } from "../media";
+import { run, safeEnv, toPcmWav } from "../media";
 import { wordsFromMarks } from "./macos";
 import { TTSError, type TTSProvider, type TTSRequest, type TTSResult } from "./types";
 
@@ -42,7 +42,14 @@ async function scriptPath(): Promise<string> {
   if (!fs.existsSync(p) || fs.readFileSync(p, "utf8") !== SAPI_SCRIPT) { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, SAPI_SCRIPT); }
   return p;
 }
-const ps = (script: string, args: string[], signal?: AbortSignal) => run("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, ...args], { timeoutMs: explainerConfig().ttsTimeoutMs, signal });
+/** ffmpeg wants LC_ALL=C. The speech engine treats that as a culture and can spend minutes opening an audio device. */
+function speechEnv(): NodeJS.ProcessEnv {
+  const env = { ...safeEnv() };
+  delete env.LC_ALL;
+  delete env.LANG;
+  return env;
+}
+const ps = (script: string, args: string[], signal?: AbortSignal) => run("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, ...args], { timeoutMs: explainerConfig().ttsTimeoutMs, signal, env: speechEnv() });
 
 export class WindowsSpeechProvider implements TTSProvider {
   readonly id = "windows";
