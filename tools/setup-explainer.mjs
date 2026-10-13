@@ -36,12 +36,38 @@ const venvPython = (v) => (WIN ? path.join(v, "Scripts", "python.exe") : path.jo
 const ok = (s) => console.log(`  ✓ ${s}`);
 const miss = (s) => console.log(`  ✗ ${s}`);
 const hint = (s) => console.log(`      ${s}`);
-/** Run a program without a shell; never throws. */
+/**
+ * Run a program without a shell; never throws. Probes time out: a Windows Store python stub or a speech-engine
+ * startup must not block setup. Installers pass a longer timeout.
+ */
 function sh(cmd, args, opts = {}) {
-  const r = spawnSync(cmd, args, { encoding: "utf8", shell: false, windowsHide: true, ...opts });
+  const timeout = opts.timeout ?? 20_000;
+  const r = spawnSync(cmd, args, { encoding: "utf8", shell: false, windowsHide: true, timeout, ...opts });
   return { ok: !r.error && r.status === 0, status: r.error ? null : r.status, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 const has = (cmd, args = ["--version"]) => sh(cmd, args).ok;
+
+/**
+ * Whether a Windows speech voice is registered. This reads the SAPI token keys and does not start the
+ * speech engine: that initializes the audio device and, on a headless GitHub-hosted runner, blocks for minutes.
+ * The count is informational; a slow or missing PowerShell still must not stall the rest of setup.
+ */
+function windowsVoiceInstalled() {
+  const script = [
+    "$n = 0",
+    "foreach ($p in @(",
+    "  'HKLM:\\SOFTWARE\\Microsoft\\Speech\\Voices\\Tokens',",
+    "  'HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Speech\\Voices\\Tokens',",
+    "  'HKCU:\\SOFTWARE\\Microsoft\\Speech\\Voices\\Tokens',",
+    "  'HKLM:\\SOFTWARE\\Microsoft\\Speech_OneCore\\Voices\\Tokens'",
+    ")) {",
+    "  if (Test-Path -LiteralPath $p) { $n += @(Get-ChildItem -LiteralPath $p -ErrorAction SilentlyContinue).Count }",
+    "}",
+    "Write-Output $n",
+  ].join("\n");
+  const voices = sh("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script], { timeout: 15_000 });
+  return voices.ok && /^[1-9]/m.test(voices.out.trim());
+}
 
 function linuxInstallHint(debian, fedora, arch) {
   if (has("apt-get")) hint(`sudo apt install ${debian}`);
@@ -53,7 +79,7 @@ function linuxInstallHint(debian, fedora, arch) {
 console.log("Brody explainer setup");
 
 // FFmpeg, with the encoders Brody uses (Fedora's default ffmpeg-free has no libx264).
-const ffmpeg = sh(process.env.FFMPEG_PATH || "ffmpeg", ["-hide_banner", "-encoders"]);
+const ffmpeg = sh(process.env.FFMPEG_PATH || "ffmpeg", ["-hide_banner", "-nostdin", "-encoders"]);
 if (!ffmpeg.ok || !has(process.env.FFPROBE_PATH || "ffprobe", ["-version"])) {
   miss("FFmpeg is required. Install it, then run this again:");
   if (MAC) hint("brew install ffmpeg");
@@ -67,11 +93,11 @@ if (!/\blibx264\b/.test(ffmpeg.out) || !/\baac\b/.test(ffmpeg.out)) {
   else hint("Install a full FFmpeg build (macOS: brew install ffmpeg; Windows: winget install Gyan.FFmpeg).");
   process.exit(1);
 }
-ok(`FFmpeg ${(sh(process.env.FFMPEG_PATH || "ffmpeg", ["-version"]).out.split("\n")[0] ?? "").split(" ")[2] ?? ""} (H.264 and AAC encoders present)`);
+ok(`FFmpeg ${(sh(process.env.FFMPEG_PATH || "ffmpeg", ["-hide_banner", "-nostdin", "-version"]).out.split("\n")[0] ?? "").split(" ")[2] ?? ""} (H.264 and AAC encoders present)`);
 
 // Voices (information only: Brody picks whichever is available).
 if (MAC) has("swiftc") ? ok("macOS on-device voice (word timings measured by the speech engine)") : miss("swiftc not found: run xcode-select --install for the on-device voice");
-else if (WIN) sh("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).GetInstalledVoices().Count"]).out.trim().match(/^[1-9]/) ? ok("Windows speech voice (word timings measured by the speech engine)") : miss("No Windows speech voice found (Settings > Time & language > Speech > Add voices)");
+else if (WIN) windowsVoiceInstalled() ? ok("Windows speech voice (word timings measured by the speech engine)") : miss("No Windows speech voice found (Settings > Time & language > Speech > Add voices)");
 else if (has("espeak-ng") || has("espeak")) ok("eSpeak NG local voice (sentence-level timing); set PIPER_MODEL for a better local voice");
 else if (process.env.PIPER_MODEL) ok("Piper local voice");
 else { miss("No local voice: install one so videos can be narrated without a cloud service"); linuxInstallHint("espeak-ng", "espeak-ng", "espeak-ng"); }
@@ -115,7 +141,7 @@ if (CHECK_ONLY) { miss(`Manim is not installed yet (npm run explainer:setup inst
 
 console.log(`  Installing Manim ${MANIM_VERSION} into ${VENV} …`);
 fs.mkdirSync(path.dirname(VENV), { recursive: true });
-const stream = { stdio: "inherit" };
+const stream = { stdio: "inherit", timeout: 20 * 60_000 };
 let installed;
 if (uv) {
   installed = sh("uv", ["venv", "--allow-existing", "--python", "3.12", VENV], stream).ok && sh("uv", ["pip", "install", "--python", py, `manim==${MANIM_VERSION}`], stream).ok;

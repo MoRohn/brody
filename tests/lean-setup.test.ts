@@ -110,7 +110,10 @@ describe("Add Lean endpoint", () => {
     try {
       const res = await post({ "content-type": "application/json", "sec-fetch-site": "same-origin" });
       expect(res.status).toBe(400);
-      expect((await res.json()).error.hint).toMatch(/LEAN_BIN/);
+      const hint = (await res.json()).error.hint as string;
+      expect(hint).toMatch(/LEAN_BIN/);
+      // Windows cannot run Add Lean either; that limit must not hide the pinned binary.
+      if (process.platform !== "darwin" && process.platform !== "linux") expect(hint).toMatch(/macOS and Linux/);
     } finally {
       config.formal.leanBin = undefined;
     }

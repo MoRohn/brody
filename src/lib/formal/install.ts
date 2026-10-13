@@ -39,8 +39,15 @@ export function leanInstallState(): LeanInstallState {
 /** Whether Add Lean can run here, and why not. */
 export function canInstallLean(): { ok: boolean; reason?: string } {
   if (runtimeKind() === "docker") return { ok: false, reason: "The Docker image ships Lean. Rebuild it with docker compose up --build." };
-  if (process.platform !== "darwin" && process.platform !== "linux") return { ok: false, reason: "Add Lean supports macOS and Linux. Install Lean with elan: https://lean-lang.org/install" };
-  if (config.formal.leanBin) return { ok: false, reason: `LEAN_BIN is set to ${config.formal.leanBin}. Fix or remove it to let Brody find or install Lean.` };
+  const supported = process.platform === "darwin" || process.platform === "linux";
+  // A pinned binary blocks discovery on every OS. On Windows it must be reported as well: the platform limit used
+  // to return first, so a set LEAN_BIN was never explained there.
+  if (config.formal.leanBin) {
+    const pinned = `LEAN_BIN is set to ${config.formal.leanBin}. Fix or remove it to let Brody find or install Lean.`;
+    if (!supported) return { ok: false, reason: `Add Lean supports macOS and Linux, so it cannot install Lean here. ${pinned}` };
+    return { ok: false, reason: pinned };
+  }
+  if (!supported) return { ok: false, reason: "Add Lean supports macOS and Linux. Install Lean with elan: https://lean-lang.org/install" };
   return { ok: true };
 }
 
