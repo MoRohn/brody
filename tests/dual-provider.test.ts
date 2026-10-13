@@ -233,6 +233,20 @@ describe("provider and model selection", () => {
     expect(getAIProvider()!.model).toBe("claude-sonnet-5");
   });
 
+  it("reads icacls ACEs when the path and the account share a line", () => {
+    const one = parseIcacls("C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\ai-settings.json RUNNERADMIN\\runneradmin:(R,W)\r\n\r\nSuccessfully processed 1 files; Failed processing 0 files\r\n");
+    expect(one).toEqual([{ id: "RUNNERADMIN\\runneradmin", perms: "(R,W)" }]);
+    const many = parseIcacls([
+      "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\ai-settings.json BUILTIN\\Administrators:(I)(F)",
+      "                                                              NT AUTHORITY\\SYSTEM:(I)(F)",
+      "                                                              RUNNERADMIN\\runneradmin:(I)(R,W)",
+      "",
+      "Successfully processed 1 files; Failed processing 0 files",
+    ].join("\n"));
+    expect(many.map((a) => a.id)).toEqual(["BUILTIN\\Administrators", "NT AUTHORITY\\SYSTEM", "RUNNERADMIN\\runneradmin"]);
+    expect(many[2]?.perms).toBe("(I)(R,W)");
+  });
+
   it("persists settings with owner-only permissions and ignores a corrupt file", () => {
     updateSettings({ provider: "anthropic" });
     expectOwnerOnly(process.env.AI_SETTINGS_PATH!);
@@ -345,27 +359,40 @@ describe("AI settings API", () => {
   });
 });
 
-/** POSIX mode 0600, or a Windows DACL with a single Allow ACE: the current user, with read and write. */
+/** ACEs from `icacls` text. One ACE per line; the path may share the first line with the first account. */
+export function parseIcacls(output: string): { id: string; perms: string }[] {
+  const aces: { id: string; perms: string }[] = [];
+  for (const raw of output.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || /^Successfully processed\b/i.test(line) || /^Failed processing\b/i.test(line)) continue;
+    const perm = line.match(/:(\([^)]+\))+\s*$/);
+    if (!perm || perm.index === undefined) continue;
+    let id = line.slice(0, perm.index).trim();
+    const known = id.match(/((?:NT AUTHORITY|BUILTIN|APPLICATION PACKAGE AUTHORITY)\\.+)$/);
+    id = known ? known[1] : (id.split(/\s+/).pop() ?? id);
+    aces.push({ id, perms: line.slice(perm.index + 1).trim() });
+  }
+  return aces;
+}
+
+/** POSIX mode 0600, or a Windows DACL whose only ACE is the current user with read and write. */
 function expectOwnerOnly(file: string) {
   if (process.platform !== "win32") {
     expect(fs.statSync(file).mode & 0o777).toBe(0o600);
     return;
   }
-  const literal = file.replace(/'/g, "''");
-  const script = `
-$ErrorActionPreference = 'Stop'
-$acl = Get-Acl -LiteralPath '${literal}'
-$rules = @($acl.Access)
-if ($rules.Count -ne 1) { Write-Output ("count:" + $rules.Count + " " + (($rules | ForEach-Object { $_.IdentityReference.Value + ":" + $_.FileSystemRights }) -join "; ")); exit 1 }
-$rule = $rules[0]
-$me = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Translate([System.Security.Principal.NTAccount]).Value
-if ($rule.IdentityReference.Value.ToLower() -ne $me.ToLower()) { Write-Output ("id:" + $rule.IdentityReference.Value); exit 1 }
-if ($rule.AccessControlType -ne 'Allow') { Write-Output ("type:" + $rule.AccessControlType); exit 1 }
-$rights = [int]$rule.FileSystemRights
-$need = [int]([System.Security.AccessControl.FileSystemRights]::Read -bor [System.Security.AccessControl.FileSystemRights]::Write)
-if (($rights -band $need) -ne $need) { Write-Output ("rights:" + $rule.FileSystemRights); exit 1 }
-Write-Output ok
-`;
-  const r = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { encoding: "utf8", windowsHide: true, timeout: 20_000 });
-  expect(`${r.stdout ?? ""}${r.stderr ?? ""}`.trim()).toBe("ok");
+  const who = spawnSync("whoami", [], { encoding: "utf8", windowsHide: true, timeout: 10_000 });
+  const listed = spawnSync("icacls", [file], { encoding: "utf8", windowsHide: true, timeout: 10_000 });
+  expect(who.status, who.stderr).toBe(0);
+  expect(listed.status, listed.stderr).toBe(0);
+  const aces = parseIcacls(listed.stdout ?? "");
+  const me = who.stdout.trim().toLowerCase();
+  const short = me.split("\\").pop() ?? me;
+  expect(aces.map((a) => a.id)).toEqual(aces.filter((a) => {
+    const id = a.id.toLowerCase();
+    return id === me || id === short;
+  }).map((a) => a.id));
+  expect(aces).toHaveLength(1);
+  const perms = aces[0]?.perms ?? "";
+  expect(perms.includes("F") || (perms.includes("R") && perms.includes("W")), perms).toBe(true);
 }

@@ -98,10 +98,14 @@ export async function runExplainerSetup(trigger: "startup" | "manual"): Promise<
   const cur = get();
   if (cur.state === "checking" || cur.state === "installing") return cur;
   set({ state: "checking", trigger, startedAt: Date.now(), message: "Checking FFmpeg and Manim" }, true);
-  const log = (l: string) => set({ log: [...get().log, l].slice(-80) });
+  // Keep the opening lines (FFmpeg, the voice). A Manim install prints hundreds of compiler lines and would otherwise
+  // push that result out of the log the settings panel shows.
+  const log = (l: string) => set({ log: appendSetupLog(get().log, l) });
   try {
     const check = OUTCOME_BY_EXIT[await runScript(["--check"], log, 2 * 60_000)] ?? "failed";
-    if (check !== "installable") {
+    // EXPLAINER_SETUP_CHECK_ONLY stops after the check. The unit tests use it: on Windows the check is "installable"
+    // (Python is present and no system packages are required), and a manual run would otherwise compile Manim.
+    if (check !== "installable" || process.env.EXPLAINER_SETUP_CHECK_ONLY === "1") {
       remember(check);
       set({ state: check === "ready" ? "done" : check === "failed" ? "failed" : "skipped", outcome: check, finishedAt: Date.now(), message: describe(check) });
       return get();
@@ -117,6 +121,16 @@ export async function runExplainerSetup(trigger: "startup" | "manual"): Promise<
     set({ state: "failed", outcome: "failed", finishedAt: Date.now(), message: e instanceof Error ? e.message : String(e) });
   }
   return get();
+}
+
+const LOG_HEAD = 24;
+const LOG_TAIL = 56;
+function appendSetupLog(cur: string[], line: string): string[] {
+  const cut = cur.indexOf("…");
+  if (cut === -1 && cur.length < LOG_HEAD + LOG_TAIL) return [...cur, line];
+  const head = (cut === -1 ? cur : cur.slice(0, cut)).slice(0, LOG_HEAD);
+  const tail = cut === -1 ? cur.slice(LOG_HEAD) : cur.slice(cut + 1);
+  return [...head, "…", ...[...tail, line].slice(-LOG_TAIL)];
 }
 
 export function describe(o: SetupOutcome): string {

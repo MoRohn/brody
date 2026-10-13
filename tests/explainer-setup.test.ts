@@ -17,8 +17,14 @@ const memory = path.join(dir, "explainer-setup.json");
 const clean = (extra: Record<string, string> = {}) => ({ PATH: process.env.PATH, HOME: process.env.HOME, ...extra }) as unknown as NodeJS.ProcessEnv;
 const hasFfmpeg = spawnSync("ffmpeg", ["-version"]).status === 0;
 
-beforeEach(() => { process.env.EXPLAINER_SETUP_STATE_PATH = memory; fs.rmSync(memory, { force: true }); (globalThis as { __brodyExplainerSetup?: unknown }).__brodyExplainerSetup = undefined; });
-afterEach(() => { delete process.env.EXPLAINER_SETUP_STATE_PATH; delete process.env.BRODY_EXPLAINER_VENV; });
+beforeEach(() => {
+  process.env.EXPLAINER_SETUP_STATE_PATH = memory;
+  // Check only. On Windows the real script reports Manim as installable, and a manual run would compile it.
+  process.env.EXPLAINER_SETUP_CHECK_ONLY = "1";
+  fs.rmSync(memory, { force: true });
+  (globalThis as { __brodyExplainerSetup?: unknown }).__brodyExplainerSetup = undefined;
+});
+afterEach(() => { delete process.env.EXPLAINER_SETUP_STATE_PATH; delete process.env.BRODY_EXPLAINER_VENV; delete process.env.EXPLAINER_SETUP_CHECK_ONLY; });
 
 describe("when automatic setup runs", () => {
   it("runs on a developer machine where nothing says otherwise", () => {
@@ -56,7 +62,7 @@ describe("the setup run", () => {
   it("checks with the real script, reports the outcome, and remembers it", async (ctx) => {
     if (!hasFfmpeg) ctx.skip();
     const s = await runExplainerSetup("manual");
-    expect(["ready", "installed", "needs-system-libraries", "failed"]).toContain(s.outcome);
+    expect(["ready", "installed", "installable", "needs-system-libraries", "failed"]).toContain(s.outcome);
     expect(s.log.join("\n")).toMatch(/FFmpeg/);
     expect(JSON.parse(fs.readFileSync(memory, "utf8"))).toMatchObject({ outcome: s.outcome === "installed" ? "installed" : s.outcome, venv: explainerVenv() });
     const summary = await toolSummary();
@@ -83,6 +89,7 @@ describe("the setup run", () => {
   }, 120_000);
 
   it.runIf(process.env.EXPLAINER_SETUP_INSTALL_TEST === "1")("installs Manim into an empty virtualenv when it is missing", async () => {
+    delete process.env.EXPLAINER_SETUP_CHECK_ONLY;
     process.env.BRODY_EXPLAINER_VENV = path.join(dir, "venv");
     const s = await runExplainerSetup("manual");
     expect(s.outcome).toBe("installed");
