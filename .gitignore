@@ -44,6 +44,9 @@ next-env.d.ts
 # compiled parse worker (npm run build:worker)
 /dist
 
+# GitHub Pages output (node site/build.mjs)
+/site/dist
+
 # app data and test output
 /data
 /test-results

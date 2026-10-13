@@ -1,0 +1,23 @@
+name: Feature request
+description: Something Brody should do, grounded in how the tool actually works
+title: ""
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you were trying to learn about a repository, and what Brody could not do.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What you would like to happen. If it touches analysis, say whether it can be done without executing the repository.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Optional.
