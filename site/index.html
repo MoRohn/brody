@@ -288,7 +288,7 @@
         <div class="section-intro">
           <p class="kicker">Quick start</p>
           <h2 id="start-title">Run it locally. It does not need a key to be useful.</h2>
-          <p>Node 24 is the version CI and the Docker image use (<code>.nvmrc</code>). AI keys are optional. Then upload <code>fixtures/sample-shop</code>, a small shop backend with deliberate flaws. Brody listens on <a href="http://localhost:3003">http://localhost:3003</a>.</p>
+          <p>Node 24 is the version CI and the Docker image use (<code>.nvmrc</code>). AI keys are optional. Then upload <code>fixtures/sample-shop</code>, a small shop backend with deliberate flaws. Then open <a href="http://brody.localhost">http://brody.localhost</a> (Docker) or <a href="http://brody.localhost:3003">http://brody.localhost:3003</a> (<code>npm run dev</code>); it needs no setup.</p>
         </div>
         <div class="qs-grid">
           <article class="card">
@@ -310,7 +310,7 @@ npm run dev</code></pre>
             <pre><code>npm run analyze -- ./path/to/project --out ./report</code></pre>
           </article>
         </div>
-        <p class="note" style="margin-top: 1rem">Brody answers on loopback and on the names in <code>ALLOWED_HOSTS</code> (default <code>brody</code>), and refuses other host names. The <a href="https://github.com/MoRohn/brody#quick-start">README quick start</a> covers that check, Windows, and <code>start brody</code>.</p>
+        <p class="note" style="margin-top: 1rem">Brody answers on loopback, including any <code>.localhost</code> name, and on the names in <code>ALLOWED_HOSTS</code> (default <code>brody</code>), and refuses other host names. The <a href="https://github.com/MoRohn/brody#quick-start">README quick start</a> covers that check, Windows, and <code>start brody</code>.</p>
         <figure class="frame" style="margin-top: 1.2rem">
           <img src="media/home.webp" width="2880" height="1800" alt="Home: upload files, a folder, or a ZIP, import from GitHub, or open a Brody export." loading="lazy">
           <figcaption>Start from files, a folder, a ZIP, a GitHub repository, or a Brody export.</figcaption>

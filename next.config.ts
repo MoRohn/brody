@@ -9,8 +9,8 @@ const nextConfig: NextConfig = {
     "@resvg/resvg-js",
   ],
   poweredByHeader: false,
-  // The app is addressed as http://brody:3003 (add "127.0.0.1 brody" to /etc/hosts).
-  allowedDevOrigins: ["brody"],
+  // The app is addressed as http://brody.localhost (no setup), or http://brody:3003 with "127.0.0.1 brody" in /etc/hosts.
+  allowedDevOrigins: ["brody.localhost", "brody"],
   experimental: {
     // Because the app uses a proxy (the host allow-list), Next buffers every request body and, by default, silently
     // truncates it at 10 MB, which breaks large folder uploads with "could not be read as a multipart form". Buffer up

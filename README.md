@@ -92,7 +92,7 @@ The **Code Map** goes from functional areas to files to a single symbol, marks r
 
 ```bash
 cp .env.example .env        # optional: add ANTHROPIC_API_KEY or OPENAI_API_KEY to enable AI features
-docker compose up --build   # then open http://localhost:3003
+docker compose up --build   # then open http://brody.localhost
 ```
 
 The image (Node 24, non-root, all capabilities dropped) includes Ruff for Python analysis and a Lean 4 toolchain for formal verification, and keeps its SQLite database in the `brody-data` volume.
@@ -104,10 +104,10 @@ Requires Node 24 LTS, the version CI and the Docker image use (`.nvmrc`; with Ho
 ```bash
 npm install
 cp .env.example .env        # optional (.env.local works too and takes precedence)
-npm run dev                 # http://localhost:3003
+npm run dev                 # http://brody.localhost:3003
 ```
 
-Open **http://localhost:3003**. Brody always answers on loopback (`localhost`, `127.0.0.1`, `[::1]`) and on the names in `ALLOWED_HOSTS` (default `brody`), and refuses any other host name to block DNS rebinding. To use **http://brody:3003**, make the name resolve once with `echo "127.0.0.1 brody" | sudo tee -a /etc/hosts`; set `ALLOWED_HOSTS=` (empty) to turn the check off, for example when reaching Brody from another machine by IP.
+Open **http://brody.localhost** with Docker, or **http://brody.localhost:3003** with `npm run dev` and `npm start`. Browsers send every name under `.localhost` to your own machine, so the address needs no setup, and `http://localhost:3003` keeps working too. Docker publishes the branded address on port 80, bound to your machine only; if port 80 is taken, set `BRODY_HTTP_PORT=8080` in the shell or `.env` and open http://brody.localhost:8080. Brody always answers on loopback (`localhost`, any `*.localhost` name, `127.0.0.1`, `[::1]`) and on the names in `ALLOWED_HOSTS` (default `brody`), and refuses any other host name to block DNS rebinding. To use **http://brody:3003** instead, make the name resolve once with `echo "127.0.0.1 brody" | sudo tee -a /etc/hosts`; set `ALLOWED_HOSTS=` (empty) to turn the check off, for example when reaching Brody from another machine by IP.
 
 **Windows** works the same in PowerShell or cmd: `npm install`, then `npm run dev`, or `npm run build` and `npm start` for production (the `start brody` helper below is for macOS and Linux). Every npm script is plain Node, so no bash or WSL is needed. Install Ruff with `pip install ruff` and FFmpeg with `winget install Gyan.FFmpeg` for explainer videos. The repository's `.gitattributes` keeps line endings consistent across systems.
 

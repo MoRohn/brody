@@ -69,7 +69,7 @@ const required = [
   "docker compose up --build",
   "npm install",
   "npm run dev",
-  "http://localhost:3003",
+  "http://brody.localhost",
   "npm run analyze -- ./path/to/project --out ./report",
   "fixtures/sample-shop",
   "MIT License",

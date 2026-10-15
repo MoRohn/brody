@@ -12,6 +12,13 @@ describe("host allow-list", () => {
     for (const host of ["localhost:3003", "127.0.0.1:3003", "[::1]:3003", "brody:3003", "LOCALHOST"]) expect(status(host), host).toBe(200);
   });
 
+  it("accepts the branded http://brody.localhost, and any other .localhost name, whatever ALLOWED_HOSTS says", () => {
+    process.env.ALLOWED_HOSTS = "review.internal";
+    for (const host of ["brody.localhost", "brody.localhost:80", "Brody.Localhost:3003", "other.localhost"]) expect(status(host), host).toBe(200);
+    // Only the real .localhost suffix counts.
+    for (const host of ["brody.localhost.evil.example", "brodylocalhost", "evil-localhost"]) expect(status(host), host).toBe(421);
+  });
+
   it("refuses other names with 421, which blocks DNS rebinding", () => {
     process.env.ALLOWED_HOSTS = "brody";
     expect(status("evil.example:3003")).toBe(421);

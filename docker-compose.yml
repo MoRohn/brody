@@ -1,9 +1,13 @@
-# docker compose up --build   ->   http://localhost:3003   (or http://brody:3003 with "127.0.0.1 brody" in /etc/hosts)
+# docker compose up --build   ->   http://brody.localhost   (also http://localhost:3003)
 services:
   app:
     build: .
     image: brody:latest
     ports:
+      # http://brody.localhost: browsers and the OS send every *.localhost name to this machine, so no hosts-file entry is
+      # needed. Bound to this machine only. If port 80 is taken, set BRODY_HTTP_PORT (e.g. 8080 -> http://brody.localhost:8080).
+      - "127.0.0.1:${BRODY_HTTP_PORT:-80}:3003"
+      # http://localhost:3003, kept for scripts, export launchers and bookmarks.
       - "${PORT:-3003}:3003"
     # Optional: copy .env.example to .env (or .env.local) and add ANTHROPIC_API_KEY (and CREDENTIAL_SECRET) to enable AI features.
     # Both files are read; .env.local wins. PORT and DATABASE_PATH below are fixed inside the container.
@@ -15,6 +19,8 @@ services:
     environment:
       PORT: "3003"
       DATABASE_PATH: /data/brody.db
+      # The address printed when the app starts (the container cannot see which host port it was published on).
+      BRODY_URL: "http://brody.localhost${BRODY_HTTP_PORT:+:${BRODY_HTTP_PORT}}"
     volumes:
       - brody-data:/data
     tmpfs:

@@ -26,7 +26,7 @@ env_value() {
 }
 PORT="${PORT:-$(env_value PORT)}"
 PORT="${PORT:-3003}"
-HOST_NAME="${BRODY_HOST:-brody}"
+HOST_NAME="${BRODY_HOST:-brody.localhost}"
 mkdir -p data
 PID_FILE="data/brody.pid"
 LOG_FILE="data/brody.log"
@@ -72,9 +72,14 @@ open_browser() {
   "$opener" "$URL" >/dev/null 2>&1 || say "Could not open a browser automatically. Open $URL yourself."
 }
 
-name_resolves() { dscacheutil -q host -a name "$HOST_NAME" 2>/dev/null | grep -q "127.0.0.1" || grep -qE "^[^#]*\b$HOST_NAME\b" /etc/hosts 2>/dev/null; }
+# Names under .localhost always reach this machine (browsers and the OS resolve them without DNS); others, such as a
+# BRODY_HOST of "brody", need an /etc/hosts entry.
+name_resolves() {
+  case "$HOST_NAME" in localhost|*.localhost) return 0 ;; esac
+  dscacheutil -q host -a name "$HOST_NAME" 2>/dev/null | grep -q "127.0.0.1" || grep -qE "^[^#]*\b$HOST_NAME\b" /etc/hosts 2>/dev/null
+}
 
-# http://brody:PORT once that name resolves, http://localhost:PORT until then (loopback is always allowed).
+# http://brody.localhost:PORT by default; with another BRODY_HOST, that name once it resolves, http://localhost:PORT until then.
 URL="http://localhost:$PORT"
 name_resolves && URL="http://$HOST_NAME:$PORT"
 

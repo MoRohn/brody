@@ -9,7 +9,7 @@ CI and the Docker image use Node 24 (`.nvmrc`).
 ```bash
 npm install
 cp .env.example .env          # optional: ANTHROPIC_API_KEY or OPENAI_API_KEY
-npm run dev                   # http://localhost:3003
+npm run dev                   # http://brody.localhost:3003
 ```
 
 `npm install` does not run dependency install scripts (`.npmrc`). Optional local tools:
@@ -22,7 +22,7 @@ Docker:
 
 ```bash
 cp .env.example .env
-docker compose up --build     # http://localhost:3003
+docker compose up --build     # http://brody.localhost
 ```
 
 The sample repository is `fixtures/sample-shop`.

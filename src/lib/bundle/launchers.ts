@@ -17,9 +17,10 @@ ready-made reports. Three ways to use it:
                   from inside this folder)
         Linux:    open-in-brody.sh
         Windows:  "Open in Brody.bat"
-      The launcher sends this export to the Brody running at http://brody:3003
-      (or http://localhost:3003) and opens the imported project in your
-      browser. To use another address, set BRODY_URL first, for example:
+      The launcher sends this export to the Brody running at
+      http://brody.localhost (or http://localhost:3003) and opens the imported
+      project in your browser. To use another address, set BRODY_URL first,
+      for example:
         BRODY_URL=http://192.168.1.20:3003 ./open-in-brody.sh
 
 2. READ IT WITHOUT BRODY
@@ -42,7 +43,8 @@ export const LAUNCHER_SH = `#!/bin/bash
 # Brody must be running (start it with:  brody start).
 # To use another address:  BRODY_URL=http://host:3003 ./open-in-brody.sh
 cd "$(dirname "$0")" || exit 1
-CANDIDATES="\${BRODY_URL:-http://brody:3003 http://localhost:3003 http://127.0.0.1:3003}"
+# Brody's own address first (Docker publishes it on port 80; npm start on 3003), then plain loopback and the brody name.
+CANDIDATES="\${BRODY_URL:-http://brody.localhost http://brody.localhost:3003 http://localhost:3003 http://127.0.0.1:3003 http://brody:3003}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 ZIP="$TMP/brody-export.zip"
@@ -104,13 +106,13 @@ finish 1
 `;
 
 // tar.exe (Windows 10 and later) writes a standard ZIP; PowerShell's Compress-Archive can write backslash paths that Brody rejects.
-// Like the shell launcher it tries loopback first (always accepted by the host check, no hosts-file entry needed), then
-// the brody name; BRODY_URL overrides both.
+// Like the shell launcher it tries Brody's own address first, then loopback (all accepted by the host check with no
+// hosts-file entry), then the brody name; BRODY_URL overrides them.
 export const LAUNCHER_BAT = [
   "@echo off",
   "setlocal",
   'cd /d "%~dp0"',
-  'if defined BRODY_URL (set "CANDIDATES=%BRODY_URL%") else (set "CANDIDATES=http://localhost:3003 http://127.0.0.1:3003 http://brody:3003")',
+  'if defined BRODY_URL (set "CANDIDATES=%BRODY_URL%") else (set "CANDIDATES=http://brody.localhost http://brody.localhost:3003 http://localhost:3003 http://127.0.0.1:3003 http://brody:3003")',
   'set "TMPZIP=%TEMP%\\brody-export-%RANDOM%.zip"',
   'tar.exe -a -cf "%TMPZIP%" *',
   "for %%U in (%CANDIDATES%) do (",
