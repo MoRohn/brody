@@ -8,7 +8,7 @@ import { Brand } from "@/components/Brand";
 import { StatusChip } from "@/components/project";
 import { Icon } from "@/components/Icon";
 import { ThemeControl } from "@/components/ThemeControl";
-import { api, ApiError, fmtBytes, useApi } from "@/lib/client";
+import { api, ApiError, fmtBytes, uploadWithProgress, useApi } from "@/lib/client";
 import { DEFAULT_EXCLUDED_DIRS } from "@/lib/ingest/classify";
 import { DownloadMenu } from "@/components/download";
 import { Chip, Empty, ErrorBox, Loading, Spinner } from "@/components/ui";
@@ -17,22 +17,6 @@ import type { GitHubMetadata } from "@/lib/ingest/github";
 type Mode = "files" | "folder" | "zip";
 interface ProjectListItem { id: string; name: string; sourceType: string; sourceUrl: string | null; branch: string | null; commit: string | null; fileCount: number; status: string; updatedAt: number; languages: Record<string, number> }
 interface Status { runtime?: "docker" | "local"; ai: { available: boolean; provider: string; model: string; reason?: string; checked?: boolean; ok?: boolean; problem?: { summary: string; hint: string } }; limits: { maxUploadBytes: number }; analyzers: { python: boolean; ruff: boolean; gofmt: boolean } }
-
-function uploadWithProgress(form: FormData, onProgress: (pct: number) => void): Promise<{ project: { id: string }; warnings?: string[] }> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/projects/upload");
-    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
-    xhr.onerror = () => reject(new ApiError("The upload could not reach the server. Check your connection and try again.", "network", 0));
-    xhr.onload = () => {
-      let body: { error?: { message?: string; code?: string; hint?: string } } & { project: { id: string } } | null = null;
-      try { body = JSON.parse(xhr.responseText); } catch { /* ignore */ }
-      if (xhr.status >= 200 && xhr.status < 300 && body) resolve(body);
-      else reject(new ApiError(body?.error?.message ?? `Upload failed with status ${xhr.status}.`, body?.error?.code ?? "http_error", xhr.status, body?.error?.hint));
-    };
-    xhr.send(form);
-  });
-}
 
 function LanguageBar({ languages }: { languages: Record<string, number> }) {
   const entries = Object.entries(languages).sort((a, b) => b[1] - a[1]);

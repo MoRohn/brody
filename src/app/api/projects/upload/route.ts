@@ -35,7 +35,9 @@ export async function POST(req: Request) {
       return json({ project: projectSummary(ip), warnings: imported.warnings, imported: true }, 201);
     }
     const name = String(form.get("name") ?? "").trim() || undefined;
-    const outcome = await ingestUpload(mode, items, { name });
+    // Set by Re-analyze: the project this upload is a new version of.
+    const previousProjectId = String(form.get("previous") ?? "").trim() || undefined;
+    const outcome = await ingestUpload(mode, items, { name, previousProjectId });
     const job = enqueueAnalysis(outcome.projectId);
     const p = getDb().select().from(schema.projects).where(eq(schema.projects.id, outcome.projectId)).get()!;
     return json({ project: projectSummary(p), jobId: job.id, warnings: outcome.warnings, stats: { included: outcome.stats.included, excluded: outcome.stats.excluded, binary: outcome.stats.binary } }, 201);

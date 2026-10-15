@@ -85,3 +85,20 @@ export function parseCite(c: string): { path: string; line?: number; end?: numbe
   const m = c.match(/^(.*?):(\d+)(?:-(\d+))?$/);
   return m ? { path: m[1], line: Number(m[2]), end: m[3] ? Number(m[3]) : undefined } : { path: c };
 }
+
+/** POST a multipart upload to /api/projects/upload, reporting progress; resolves with the created project. */
+export function uploadWithProgress(form: FormData, onProgress: (pct: number) => void): Promise<{ project: { id: string }; warnings?: string[] }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/projects/upload");
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
+    xhr.onerror = () => reject(new ApiError("The upload could not reach the server. Check your connection and try again.", "network", 0));
+    xhr.onload = () => {
+      let body: { error?: { message?: string; code?: string; hint?: string } } & { project: { id: string } } | null = null;
+      try { body = JSON.parse(xhr.responseText); } catch { /* ignore */ }
+      if (xhr.status >= 200 && xhr.status < 300 && body) resolve(body);
+      else reject(new ApiError(body?.error?.message ?? `Upload failed with status ${xhr.status}.`, body?.error?.code ?? "http_error", xhr.status, body?.error?.hint));
+    };
+    xhr.send(form);
+  });
+}

@@ -256,9 +256,10 @@ export function buildMarkdown(projectId: string, opts: { scope?: ReportScope; de
     const rows = getDb().select().from(schema.questions).where(eq(schema.questions.projectId, projectId)).orderBy(schema.questions.createdAt).all();
     if (rows.length === 0) out.push("_No questions have been asked of this repository yet._");
     for (const q of rows) {
-      const a = q.answer as { answer?: string; mode?: string; confidence?: string; insufficientEvidence?: boolean; citations?: { path: string; startLine: number; endLine: number; note?: string }[]; notes?: string[] };
+      const a = q.answer as { answer?: string; standaloneQuestion?: string; mode?: string; confidence?: string; insufficientEvidence?: boolean; citations?: { path: string; startLine: number; endLine: number; note?: string }[]; notes?: string[] };
       out.push(`\n### ${q.question}\n`);
-      out.push(`_${new Date(q.createdAt).toISOString()} · ${a.mode === "graph" ? "answered from the code graph" : a.mode === "ai" ? "AI answer" : "retrieval only"} · confidence ${a.confidence ?? "n/a"}${a.insufficientEvidence ? " · insufficient evidence" : ""}_\n`);
+      if (a.standaloneQuestion) out.push(`_Answered as: ${a.standaloneQuestion}_\n`);
+      out.push(`_${new Date(q.createdAt).toISOString()} · ${a.mode === "graph" ? "answered from the code graph" : a.mode === "ai" ? "AI answer" : a.mode === "analysis" ? "from Brody's analysis" : "retrieval only"} · confidence ${a.confidence ?? "n/a"}${a.insufficientEvidence ? " · insufficient evidence" : ""}_\n`);
       out.push(`${a.answer ?? ""}\n`);
       if (a.citations?.length) out.push("**Evidence**\n", ...a.citations.map((c) => `- \`${c.path}:${c.startLine}${c.endLine !== c.startLine ? `-${c.endLine}` : ""}\`${c.note ? ` ${c.note}` : ""}`));
       if (a.notes?.length) out.push(`\n_${a.notes.join(" ")}_`);

@@ -22,11 +22,16 @@ export function createPendingProject(source: IngestSource, token?: string): stri
   return projectId;
 }
 
-/** Store normalized files for a project and compute the incremental diff against the previous analysis of the same source. */
-export function attachFiles(projectId: string, source: IngestSource, files: NormalizedFile[], stats: IngestStats): IncrementalStats {
+/**
+ * Store normalized files for a project and compute the incremental diff against the previous analysis of the same source.
+ * The previous version is the one named in `previousId` (a re-upload from Re-analyze), otherwise the latest ready project
+ * with the same source and name.
+ */
+export function attachFiles(projectId: string, source: IngestSource, files: NormalizedFile[], stats: IngestStats, opts: { previousId?: string } = {}): IncrementalStats {
   const db = getDb();
   const sourceHash = sha256(files.map((f) => `${f.path}:${f.hash}`).join("\n"));
-  const previous = db
+  const named = opts.previousId ? db.select({ id: schema.projects.id }).from(schema.projects).where(and(eq(schema.projects.id, opts.previousId), ne(schema.projects.id, projectId), eq(schema.projects.status, "ready"))).get() : undefined;
+  const previous = named ?? db
     .select({ id: schema.projects.id })
     .from(schema.projects)
     .where(and(eq(schema.projects.sourceType, source.type), source.url ? eq(schema.projects.sourceUrl, source.url) : isNull(schema.projects.sourceUrl), eq(schema.projects.name, source.name), ne(schema.projects.id, projectId), eq(schema.projects.status, "ready")))
@@ -77,9 +82,9 @@ export interface CreateProjectResult {
   incremental: IncrementalStats;
 }
 
-export function createProject(source: IngestSource, files: NormalizedFile[], stats: IngestStats, token?: string): CreateProjectResult {
+export function createProject(source: IngestSource, files: NormalizedFile[], stats: IngestStats, token?: string, opts: { previousId?: string } = {}): CreateProjectResult {
   const projectId = createPendingProject(source, token);
-  const incremental = attachFiles(projectId, source, files, stats);
+  const incremental = attachFiles(projectId, source, files, stats, opts);
   getDb().update(schema.projects).set({ status: "created" }).where(eq(schema.projects.id, projectId)).run();
   return { projectId, stats, incremental };
 }

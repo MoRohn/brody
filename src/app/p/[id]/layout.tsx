@@ -1,15 +1,16 @@
 "use client";
 import Link from "next/link";
-import { useParams, usePathname, useRouter } from "next/navigation";
+import { useParams, usePathname } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { DownloadMenu } from "@/components/download";
 import { AnalysisProgress, ProjectCtx, SearchBox, StatusChip, type ProjectSummary } from "@/components/project";
 import { Brand } from "@/components/Brand";
+import { ReanalyzeButton } from "@/components/reanalyze";
 import { Icon, type IconName } from "@/components/Icon";
 import { ThemeControl } from "@/components/ThemeControl";
 import { runUsage, UsagePill } from "@/components/usage";
 import { Chip, ErrorBox, Loading } from "@/components/ui";
-import { api, useApi } from "@/lib/client";
+import { useApi } from "@/lib/client";
 
 const NAV: { slug: string; label: string; icon: IconName }[] = [
   { slug: "", label: "Overview", icon: "overview" },
@@ -29,8 +30,6 @@ const NAV: { slug: string; label: string; icon: IconName }[] = [
 export default function ProjectLayout({ children }: { children: React.ReactNode }) {
   const { id } = useParams<{ id: string }>();
   const pathname = usePathname();
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
   const [pollKey, setPollKey] = useState(0);
   const { data, error } = useApi<{ project: ProjectSummary }>(`/api/projects/${id}?k=${pollKey}`, {
     pollMs: 1500,
@@ -47,12 +46,6 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
   const ready = project.status === "ready";
   const crit = (overview.data?.review?.bySeverity?.Critical ?? 0) + (overview.data?.review?.bySeverity?.High ?? 0);
 
-  const reanalyze = async () => {
-    setBusy(true);
-    try { const r = await api<{ project: { id: string } }>(`/api/projects/${id}/analyze`, { method: "POST" }); if (r.project.id !== id) router.push(`/p/${r.project.id}`); else reload(); } catch (e) { alert((e as Error).message); }
-    setBusy(false);
-  };
-
   return (
     <ProjectCtx.Provider value={ctx}>
       <div className="flex h-screen flex-col">
@@ -68,7 +61,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
           <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
             {ready && <SearchBox projectId={id} />}
             {ready && <DownloadMenu projectId={id} scope="full" label="Export report" />}
-            {ready && <button className="btn" onClick={reanalyze} disabled={busy} aria-busy={busy} title="Re-run the analysis (GitHub projects fetch the latest commit)">{busy ? "Starting…" : "Re-analyze"}</button>}
+            {ready && <ReanalyzeButton project={project} onRestarted={reload} />}
             {(() => { const run = runUsage(project.job); return run ? <UsagePill run={run} /> : null; })()}
             <ThemeControl />
           </div>

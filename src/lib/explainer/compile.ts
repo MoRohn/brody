@@ -86,7 +86,9 @@ export function loadGroundedResult(projectId: string, source: ExplanationSource)
     const row = db.select().from(schema.questions).where(and(eq(schema.questions.projectId, projectId), eq(schema.questions.id, source.id))).get();
     if (!row) throw new AppError("not_found", "That question was not found in this project.", 404);
     const a = row.answer as unknown as Answer;
-    return { ...base, notes: a.notes ?? [], components: [], edges: [], steps: [], title: row.question, question: row.question, prose: a.answer, statements: splitSentences(a.answer.replace(/\n+-\s+/g, ". ").replace(/\n+/g, " ")).map((t) => ({ text: t, evidence: [] })), citations: a.citations.map((c) => ({ path: c.path, startLine: c.startLine, endLine: c.endLine, note: c.note })), confidence: a.confidence, insufficient: a.insufficientEvidence };
+    // A follow-up ("explain that more simply") is explained under the question it stands for.
+    const asked = a.standaloneQuestion || row.question;
+    return { ...base, notes: a.notes ?? [], components: [], edges: [], steps: [], title: asked, question: asked, prose: a.answer, statements: splitSentences(a.answer.replace(/\n+-\s+/g, ". ").replace(/\n+/g, " ")).map((t) => ({ text: t, evidence: [] })), citations: a.citations.map((c) => ({ path: c.path, startLine: c.startLine, endLine: c.endLine, note: c.note })), confidence: a.confidence, insufficient: a.insufficientEvidence };
   }
   if (!docs) throw new AppError("no_documentation", "This project has no generated documentation yet.", 409, "Re-run the analysis, then try again.");
   if (source.kind === "file") {

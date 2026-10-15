@@ -1,4 +1,6 @@
+import { eq } from "drizzle-orm";
 import { config } from "../config";
+import { getDb, schema } from "../db/client";
 import { AppError } from "../util/errors";
 import { normalizeFiles } from "./normalize";
 import { sanitizeRelativePath, stripCommonRoot } from "./paths";
@@ -19,12 +21,19 @@ export interface IngestOutcome extends CreateProjectResult {
   warnings: string[];
 }
 
-/** Validate and store uploaded content as a new project. Throws AppError with actionable messages. */
-export async function ingestUpload(mode: UploadMode, items: UploadedItem[], opts: { name?: string } = {}): Promise<IngestOutcome> {
+/**
+ * Validate and store uploaded content as a new project. Throws AppError with actionable messages.
+ * `previousProjectId` makes the upload a new version of that project (Re-analyze with updated code): it is compared with
+ * that version file by file, whatever the folder or archive is called.
+ */
+export async function ingestUpload(mode: UploadMode, items: UploadedItem[], opts: { name?: string; previousProjectId?: string } = {}): Promise<IngestOutcome> {
   if (items.length === 0) throw new AppError("empty_upload", "No files were received.", 400, "Choose at least one file, a folder or a ZIP archive.");
   const warnings: string[] = [];
   let raw: RawFile[] = [];
-  let name = opts.name?.trim() || "";
+  const previous = opts.previousProjectId ? getDb().select({ name: schema.projects.name }).from(schema.projects).where(eq(schema.projects.id, opts.previousProjectId)).get() : undefined;
+  if (opts.previousProjectId && !previous) throw new AppError("project_not_found", "The project this upload updates no longer exists.", 404, "Upload it as a new project from the home page instead.");
+  // A new version keeps the project's name, so it stays one project in the list however the folder is called today.
+  let name = opts.name?.trim() || previous?.name || "";
 
   if (mode === "zip") {
     if (items.length !== 1) throw new AppError("bad_upload", "Upload exactly one ZIP archive.", 400);
@@ -65,6 +74,6 @@ export async function ingestUpload(mode: UploadMode, items: UploadedItem[], opts
   if (included.every((f) => f.isBinary)) throw new AppError("binary_only", "The upload contains only binary files, which cannot be analysed as source code.", 400, "Upload source files, not compiled artifacts.");
 
   const source: IngestSource = { type: mode, name };
-  const res = createProject(source, files, stats);
+  const res = createProject(source, files, stats, undefined, { previousId: opts.previousProjectId });
   return { ...res, warnings };
 }

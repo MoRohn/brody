@@ -9,6 +9,35 @@ import { enqueueAnalysis } from "@/lib/jobs";
 export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
 
+/** What Re-analyze can do for this project. Upload-sourced projects keep only a snapshot, so new code has to be uploaded. */
+interface ReanalyzePlan {
+  source: "github" | "upload";
+  sourceType: string;
+  current: { commit: string | null; branch: string | null };
+  /** GitHub only: the head of the same branch now, or why it could not be read. */
+  latest?: { commit: string; branch: string } | null;
+  upToDate?: boolean;
+  checkError?: string;
+}
+
+export async function GET(_req: Request, { params }: Ctx) {
+  return guard(async () => {
+    const { id } = await params;
+    const project = getProject(id);
+    const current = { commit: project.commit, branch: project.branch };
+    if (project.sourceType !== "github" || !project.sourceUrl) return json({ source: "upload", sourceType: project.sourceType, current } satisfies ReanalyzePlan);
+    try {
+      const cred = getDb().select().from(schema.credentials).where(eq(schema.credentials.projectId, id)).get();
+      const ref = parseGitHubUrl(project.sourceUrl);
+      ref.ref = project.branch ?? undefined;
+      const meta = await fetchGitHubMetadata(ref, cred ? decryptSecret(cred.encrypted) : undefined);
+      return json({ source: "github", sourceType: project.sourceType, current, latest: { commit: meta.commit, branch: meta.branch }, upToDate: meta.commit === project.commit } satisfies ReanalyzePlan);
+    } catch (e) {
+      return json({ source: "github", sourceType: project.sourceType, current, latest: null, checkError: e instanceof Error ? e.message : String(e) } satisfies ReanalyzePlan);
+    }
+  });
+}
+
 /**
  * Re-run analysis. For GitHub projects the latest commit of the same ref is fetched;
  * a new commit creates a new project so files can be diffed against the previous run
