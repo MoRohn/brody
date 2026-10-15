@@ -1,14 +1,16 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Lora, Playfair_Display, Unbounded } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { themeInitScript } from "@/lib/theme";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
-const playfair = Playfair_Display({ variable: "--font-serif", subsets: ["latin"] });
-const lora = Lora({ variable: "--font-document", subsets: ["latin"] });
+// The fonts ship with the app (latin subsets from Google Fonts, SIL Open Font License; see fonts/*.OFL.txt), so a build
+// never downloads them: no network needed, and no build broken by a changed Google Fonts response.
+const geistSans = localFont({ src: "./fonts/geist-latin.woff2", weight: "100 900", variable: "--font-geist-sans" });
+const geistMono = localFont({ src: "./fonts/geist-mono-latin.woff2", weight: "100 900", variable: "--font-geist-mono", adjustFontFallback: false });
+const playfair = localFont({ src: "./fonts/playfair-display-latin.woff2", weight: "400 900", variable: "--font-serif", adjustFontFallback: "Times New Roman" });
+const lora = localFont({ src: "./fonts/lora-latin.woff2", weight: "400 700", variable: "--font-document", adjustFontFallback: "Times New Roman" });
 // The product wordmark only: a wide geometric face that is unmistakably Brody and nothing else in the interface.
-const unbounded = Unbounded({ variable: "--font-brand", subsets: ["latin"], weight: ["600", "700"] });
+const unbounded = localFont({ src: "./fonts/unbounded-latin.woff2", weight: "600 700", variable: "--font-brand" });
 
 export const metadata: Metadata = {
   title: "Brody: Repository Intelligence",

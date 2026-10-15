@@ -39,3 +39,17 @@ SOFTWARE.
 
 The explainer renders text with DejaVu Sans Condensed and DejaVu Sans Mono from the `dejavu-fonts-ttf` package
 (Bitstream Vera license with DejaVu changes, public domain), the same faces Brody's PDF reports use.
+
+## Interface fonts
+
+The web interface ships the latin subsets of these fonts, as served by Google Fonts, in `src/app/fonts/`. Each is
+licensed under the SIL Open Font License, Version 1.1; the full license with each font's copyright notice is in the
+`.OFL.txt` file beside it.
+
+| Font | Copyright | License file |
+|---|---|---|
+| Geist | 2024 The Geist Project Authors | `src/app/fonts/geist.OFL.txt` |
+| Geist Mono | 2024 The Geist Project Authors | `src/app/fonts/geist-mono.OFL.txt` |
+| Playfair Display | 2017 The Playfair Display Project Authors, Reserved Font Name "Playfair Display" | `src/app/fonts/playfair-display.OFL.txt` |
+| Lora | 2011 The Lora Project Authors, Reserved Font Name "Lora" | `src/app/fonts/lora.OFL.txt` |
+| Unbounded | 2022 The Unbounded Project Authors | `src/app/fonts/unbounded.OFL.txt` |
