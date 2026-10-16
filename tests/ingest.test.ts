@@ -235,8 +235,13 @@ describe("GitHub import", () => {
     try {
       const meta = await fetchGitHubMetadata({ owner: "o", repo: "r" }, "ghp_" + "a".repeat(36));
       expect(meta).toMatchObject({ fullName: "o/r", branch: "main", commit: "a".repeat(40), isPrivate: true, approximateFileCount: 2, commitMessage: "first commit" });
-      const snap = await downloadGitHubSnapshot({ owner: "o", repo: "r" }, meta.commit, "ghp_" + "a".repeat(36));
+      const work = fs.mkdtempSync(path.join(os.tmpdir(), "brody-gh-"));
+      const snap = await downloadGitHubSnapshot({ owner: "o", repo: "r" }, meta.commit, "ghp_" + "a".repeat(36), work);
       expect(snap.files.map((f) => f.path)).toEqual(["main.py"]);
+      // Downloaded and unpacked on disk, not in memory; the archive itself is removed once extracted.
+      expect(fs.readFileSync(snap.files[0].file, "utf8")).toBe("print(1)\n");
+      expect(fs.existsSync(path.join(work, "snapshot.zip"))).toBe(false);
+      fs.rmSync(work, { recursive: true, force: true });
       expect(seen.every((s) => s.auth === `Bearer ghp_${"a".repeat(36)}`)).toBe(true);
       expect(seen.every((s) => !s.url.includes("ghp_"))).toBe(true);
     } finally { vi.unstubAllGlobals(); }

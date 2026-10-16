@@ -1,8 +1,15 @@
+import fs from "node:fs";
+import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { config } from "../config";
 import { AppError } from "../util/errors";
+import { formatBytes } from "../util/text";
 import { scrubToken } from "./credentials";
-import { extractZip } from "./zip";
-import type { RawFile } from "./types";
+import { diskFullError, isDiskFull } from "./staging";
+import { extractZipToDir } from "./zip";
+import type { StagedFile } from "./types";
 
 export interface GitHubRef {
   owner: string;
@@ -107,8 +114,11 @@ export async function fetchGitHubMetadata(ref: GitHubRef, token?: string): Promi
   };
 }
 
-/** Download the repository snapshot as a zipball and extract it in memory. */
-export async function downloadGitHubSnapshot(ref: GitHubRef, commit: string, token?: string): Promise<{ files: RawFile[]; warnings: string[] }> {
+/**
+ * Download the repository snapshot as a zipball into `dir` and extract it there, so a repository larger than memory can
+ * be imported. The caller removes `dir` once the files are ingested.
+ */
+export async function downloadGitHubSnapshot(ref: GitHubRef, commit: string, token: string | undefined, dir: string): Promise<{ files: StagedFile[]; warnings: string[] }> {
   const url = `${config.github.apiBase}/repos/${ref.owner}/${ref.repo}/zipball/${encodeURIComponent(commit)}`;
   let res: Response;
   try {
@@ -116,11 +126,27 @@ export async function downloadGitHubSnapshot(ref: GitHubRef, commit: string, tok
   } catch (e) {
     throw new AppError("github_unreachable", `Could not download the repository archive: ${scrubToken(String(e))}`, 502);
   }
-  if (!res.ok) throw new AppError("github_download_failed", `GitHub returned ${res.status} while downloading the repository archive.`, 502, "Verify the repository is accessible with the supplied credentials.");
+  if (!res.ok || !res.body) throw new AppError("github_download_failed", `GitHub returned ${res.status} while downloading the repository archive.`, 502, "Verify the repository is accessible with the supplied credentials.");
+  const cap = config.limits.maxUploadBytes;
   const length = Number(res.headers.get("content-length") ?? 0);
-  if (length > config.limits.maxUploadBytes) throw new AppError("repo_too_large", `The repository archive is ${Math.round(length / 1024 / 1024)} MB, above the configured limit.`, 413);
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length > config.limits.maxUploadBytes) throw new AppError("repo_too_large", `The repository archive exceeds the configured ${Math.round(config.limits.maxUploadBytes / 1024 / 1024)} MB limit.`, 413);
-  const out = await extractZip(buf);
+  if (length > cap) throw new AppError("repo_too_large", `The repository archive is ${formatBytes(length)}, above the ${formatBytes(cap)} limit.`, 413, "Raise MAX_UPLOAD_BYTES, or upload the part of the repository you need.");
+  const zipPath = path.join(dir, "snapshot.zip");
+  let received = 0;
+  try {
+    await pipeline(Readable.fromWeb(res.body as WebReadableStream), async function* (src: AsyncIterable<Buffer>) {
+      for await (const c of src) {
+        received += c.length;
+        if (received > cap) throw new AppError("repo_too_large", `The repository archive exceeds the ${formatBytes(cap)} limit.`, 413, "Raise MAX_UPLOAD_BYTES, or upload the part of the repository you need.");
+        yield c;
+      }
+    }, fs.createWriteStream(zipPath));
+  } catch (e) {
+    if (e instanceof AppError) throw e;
+    if (isDiskFull(e)) throw diskFullError();
+    throw new AppError("github_download_failed", `The repository download was interrupted: ${scrubToken(String(e))}`, 502, "Try the import again.");
+  }
+  const out = await extractZipToDir(zipPath, path.join(dir, "files"));
+  // The archive is no longer needed; free its space before the files are read.
+  await fs.promises.rm(zipPath, { force: true });
   return { files: out.files, warnings: out.warnings };
 }

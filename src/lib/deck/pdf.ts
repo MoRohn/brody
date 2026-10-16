@@ -26,7 +26,11 @@ function paint(doc: Doc, f: boolean, s: boolean) {
   if (f && s) doc.fillAndStroke(); else if (f) doc.fill(); else if (s) doc.stroke(); else doc.undash().stroke();
 }
 
-function draw(doc: Doc, p: Prim): void {
+/** pdfkit's openImage (missing from its type definitions): an image embedded once, then placed on any number of pages. */
+type PdfImage = { readonly embedded: true };
+const openImage = (doc: Doc, data: Buffer) => (doc as unknown as { openImage(src: Buffer): PdfImage }).openImage(data);
+
+function draw(doc: Doc, p: Prim, image: (ref: string) => PdfImage | undefined): void {
   switch (p.t) {
     case "rect": {
       doc.save();
@@ -81,7 +85,16 @@ function draw(doc: Doc, p: Prim): void {
       doc.restore();
       return;
     }
-    case "table": for (const q of tablePrims(p)) draw(doc, q); return;
+    case "table": for (const q of tablePrims(p)) draw(doc, q, image); return;
+    case "image": {
+      const img = image(p.ref);
+      if (!img) return;
+      doc.save();
+      if (p.opacity !== undefined) doc.opacity(p.opacity);
+      doc.image(img as unknown as Buffer, p.x * K, p.y * K, { width: p.w * K, height: p.h * K });
+      doc.restore();
+      return;
+    }
   }
 }
 
@@ -96,10 +109,16 @@ export function renderDeckPdf(d: DeckSlides): Promise<Buffer> {
     doc.registerFont(FONT["sans-bold"], path.join(DIR, "DejaVuSansCondensed-Bold.ttf"));
     doc.registerFont(FONT.serif, path.join(DIR, "DejaVuSerif.ttf"));
     doc.registerFont(FONT["serif-bold"], path.join(DIR, "DejaVuSerif-Bold.ttf"));
+    // Each image is embedded once and placed on every page that shows it (a logo on every slide costs one copy).
+    const opened = new Map<string, PdfImage | null>();
+    const image = (ref: string) => {
+      if (!opened.has(ref)) { const img = d.images[ref]; try { opened.set(ref, img ? openImage(doc, img.data) : null); } catch { opened.set(ref, null); } }
+      return opened.get(ref) ?? undefined;
+    };
     for (const s of d.slides) {
       doc.addPage();
       doc.outline.addItem(s.title);
-      for (const p of s.prims) draw(doc, p);
+      for (const p of s.prims) draw(doc, p, image);
     }
     doc.end();
   });

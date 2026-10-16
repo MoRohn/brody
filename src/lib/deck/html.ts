@@ -1,11 +1,13 @@
+import { mixHex } from "../util/color";
 import { escapeHtml } from "../util/text";
 import { tablePrims, textLines } from "./build";
 import { H, W, type DeckSlides, type Prim, type Slide } from "./scene";
-import { C, FONTS } from "./theme";
+import { FONTS } from "./theme";
 
 const n = (v: number) => Math.round(v * 100) / 100;
 
-function shape(p: Prim): string {
+/** Images are defined once per document, as symbols every slide (and its thumbnail) can place: `ids` maps a ref to its symbol. */
+function shape(p: Prim, ids: Map<string, string>): string {
   switch (p.t) {
     case "rect": return `<rect x="${n(p.x)}" y="${n(p.y)}" width="${n(p.w)}" height="${n(p.h)}"${p.r ? ` rx="${n(p.r)}"` : ""} fill="${p.fill ?? "none"}"${p.stroke ? ` stroke="${p.stroke}" stroke-width="${p.sw ?? 1}"` : ""}${p.opacity !== undefined ? ` opacity="${p.opacity}"` : ""}/>`;
     case "ellipse": return `<ellipse cx="${n(p.x + p.w / 2)}" cy="${n(p.y + p.h / 2)}" rx="${n(p.w / 2)}" ry="${n(p.h / 2)}" fill="${p.fill ?? "none"}"${p.stroke ? ` stroke="${p.stroke}" stroke-width="${p.sw ?? 1}"` : ""}${p.opacity !== undefined ? ` opacity="${p.opacity}"` : ""}/>`;
@@ -18,13 +20,26 @@ function shape(p: Prim): string {
       const f = FONTS[p.font].css;
       return textLines(p).map((l) => `<text x="${n(l.x)}" y="${n(l.top + p.lh / 2 + p.size * 0.36)}" text-anchor="${l.anchor}" font-size="${p.size}" fill="${p.color}" font-family='${f}'${p.bold ? ' font-weight="700"' : ""}${p.italic ? ' font-style="italic"' : ""}${p.spacing ? ` letter-spacing="${p.spacing}"` : ""}>${escapeHtml(l.line)}</text>`).join("");
     }
-    case "table": return tablePrims(p).map(shape).join("");
+    case "table": return tablePrims(p).map((q) => shape(q, ids)).join("");
+    case "image": {
+      const id = ids.get(p.ref);
+      return id ? `<use href="#${id}" x="${n(p.x)}" y="${n(p.y)}" width="${n(p.w)}" height="${n(p.h)}"${p.opacity !== undefined ? ` opacity="${p.opacity}"` : ""}/>` : "";
+    }
   }
 }
 
-function slideHtml(s: Slide, i: number, total: number): string {
+function imageDefs(d: DeckSlides): { defs: string; ids: Map<string, string> } {
+  const ids = new Map<string, string>();
+  const symbols = Object.entries(d.images).map(([ref, img], i) => {
+    ids.set(ref, `img${i}`);
+    return `<symbol id="img${i}" viewBox="0 0 ${img.width} ${img.height}" preserveAspectRatio="none"><image href="data:${img.mime};base64,${img.data.toString("base64")}" width="${img.width}" height="${img.height}" preserveAspectRatio="none"/></symbol>`;
+  });
+  return { defs: symbols.length ? `<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>${symbols.join("")}</defs></svg>` : "", ids };
+}
+
+function slideHtml(s: Slide, i: number, total: number, ids: Map<string, string>): string {
   return `<section class="slide" id="s${i + 1}" data-i="${i}" aria-label="Slide ${i + 1} of ${total}: ${escapeHtml(s.title)}">
-<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="group" aria-labelledby="t${i + 1}"><title id="t${i + 1}">${escapeHtml(s.title)}</title>${s.prims.map(shape).join("")}</svg>
+<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="group" aria-labelledby="t${i + 1}"><title id="t${i + 1}">${escapeHtml(s.title)}</title>${s.prims.map((p) => shape(p, ids)).join("")}</svg>
 <aside class="notes"><strong>Speaker notes</strong><p>${escapeHtml(s.notes)}</p></aside>
 </section>`;
 }
@@ -36,33 +51,40 @@ function slideHtml(s: Slide, i: number, total: number): string {
  */
 export function buildDeckHtml(d: DeckSlides): string {
   const total = d.slides.length;
-  const body = d.slides.map((s, i) => slideHtml(s, i, total)).join("\n");
+  const { defs, ids } = imageDefs(d);
+  const body = d.slides.map((s, i) => slideHtml(s, i, total, ids)).join("\n");
+  // The presenter around the slides takes the deck's palette, and the project's logo when the deck carries its branding.
+  const P = d.palette;
+  const logo = d.logo && d.images[d.logo.ref];
+  const night = mixHex(P.deep, "#000000", 0.28);
+  const brand = logo ? `<span class="logo${d.logo!.onDark ? "" : " tile"}"><img src="data:${logo.mime};base64,${logo.data.toString("base64")}" alt="${escapeHtml(d.projectName)} logo"></span>` : `<span class="brand">BRODY</span>`;
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(d.title)}</title>
 <style>
-:root{--navy:${C.navy};--accent:${C.accent};--deep:${C.deep};--line:${C.line};--text:${C.text};--muted:${C.muted};--rail:0px}
+:root{--navy:${P.navy};--accent:${P.accent};--deep:${P.deep};--line:${P.line};--text:${P.text};--muted:${P.muted};--rail:0px}
 *{box-sizing:border-box}html,body{margin:0;height:100%}
-body{background:radial-gradient(1200px 700px at 70% -10%,#16405c 0,#0b2436 55%,#081b2a 100%);background-attachment:fixed;color:#e4eff6;font:15px/1.5 ${FONTS.sans.css};-webkit-font-smoothing:antialiased}
-.bar{position:fixed;top:0;left:0;right:0;height:54px;display:flex;align-items:center;gap:10px;padding:0 16px;background:rgba(8,27,42,.82);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:6;border-bottom:1px solid rgba(255,255,255,.08)}
-.brand{font:700 13px ${FONTS.sans.css};letter-spacing:.28em;color:#7ccbee}
+body{background:radial-gradient(1200px 700px at 70% -10%,${mixHex(P.navy, P.deep, 0.25)} 0,${P.deep} 55%,${night} 100%);background-attachment:fixed;color:${P.onDarkSoft};font:15px/1.5 ${FONTS.sans.css};-webkit-font-smoothing:antialiased}
+.bar{position:fixed;top:0;left:0;right:0;height:54px;display:flex;align-items:center;gap:10px;padding:0 16px;background:${night}D1;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:6;border-bottom:1px solid rgba(255,255,255,.08)}
+.brand{font:700 13px ${FONTS.sans.css};letter-spacing:.28em;color:${P.glow}}
+.logo{display:flex;align-items:center;height:36px}.logo img{display:block;max-height:28px;max-width:170px}.logo.tile{background:#fff;border-radius:8px;padding:4px 10px}
 .name{font:600 16px ${FONTS.serif.css};color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34vw;padding-left:12px;border-left:1px solid rgba(255,255,255,.18)}
 .bar .sp{flex:1}
-.bar button{font:inherit;font-size:13px;color:#dceaf3;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:6px 11px;cursor:pointer;transition:background .15s,border-color .15s}
+.bar button{font:inherit;font-size:13px;color:${P.onDarkSoft};background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:6px 11px;cursor:pointer;transition:background .15s,border-color .15s}
 .bar button:hover{background:rgba(255,255,255,.14)}
-.bar button[aria-pressed=true]{background:var(--accent);border-color:#4fb2d8;color:#fff}
-.bar button:focus-visible,.thumb:focus-visible{outline:2px solid #9fd3e8;outline-offset:2px}
-.bar .count{font-size:13px;color:#9fd3e8;min-width:64px;text-align:center;font-variant-numeric:tabular-nums}
+.bar button[aria-pressed=true]{background:var(--accent);border-color:${P.glow};color:#fff}
+.bar button:focus-visible,.thumb:focus-visible{outline:2px solid ${P.accentLight};outline-offset:2px}
+.bar .count{font-size:13px;color:${P.accentLight};min-width:64px;text-align:center;font-variant-numeric:tabular-nums}
 .bar .nav button{width:34px;padding:6px 0;font-size:16px}
 .progress{position:fixed;top:54px;left:0;right:0;height:3px;background:rgba(255,255,255,.06);z-index:6}
-.progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,#3aa7d1,#7ccbee);transition:width .3s ease}
+.progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,${mixHex(P.accent, P.glow, 0.5)},${P.glow});transition:width .3s ease}
 .shell{display:flex;padding-top:57px;min-height:100%}
 .rail{display:none}
 main{flex:1;min-width:0}
 .slide{display:block;margin:0 auto;padding:18px 0 8px}
 .slide svg{display:block;margin:0 auto;width:min(96vw,1280px);height:auto;background:#fff;border-radius:10px;box-shadow:0 24px 60px rgba(0,0,0,.45),0 2px 6px rgba(0,0,0,.3)}
-.notes{width:min(96vw,1280px);margin:12px auto 0;padding:12px 16px;border-radius:10px;background:rgba(255,255,255,.06);color:#c7dbe8;font-size:14px}
-.notes strong{color:#7ccbee;font-size:12px;letter-spacing:.14em;text-transform:uppercase}.notes p{margin:4px 0 0}
+.notes{width:min(96vw,1280px);margin:12px auto 0;padding:12px 16px;border-radius:10px;background:rgba(255,255,255,.06);color:${P.onDarkBody};font-size:14px}
+.notes strong{color:${P.glow};font-size:12px;letter-spacing:.14em;text-transform:uppercase}.notes p{margin:4px 0 0}
 /* State lives on <html> in classes that no element uses (has-rail, show-notes, overview, full), so no rule can hit <html> itself.
    Script upgrades the page to a presenter: one slide at a time, a thumbnail rail, notes on request. */
 .js .slide{display:none}
@@ -71,15 +93,15 @@ main{flex:1;min-width:0}
 .js .notes{display:none}.js.show-notes .notes{display:block}
 .js .slide svg,.js .notes{width:min(calc(100vw - var(--rail) - 48px),calc((100vh - 130px) * 16 / 9))}
 .js.has-rail{--rail:212px}
-.js.has-rail .rail{display:flex;flex-direction:column;gap:10px;position:fixed;top:57px;bottom:0;left:0;width:212px;overflow:auto;padding:14px 12px;background:rgba(8,27,42,.55);border-right:1px solid rgba(255,255,255,.07);z-index:4}
+.js.has-rail .rail{display:flex;flex-direction:column;gap:10px;position:fixed;top:57px;bottom:0;left:0;width:212px;overflow:auto;padding:14px 12px;background:${night}8C;border-right:1px solid rgba(255,255,255,.07);z-index:4}
 .js.has-rail main{margin-left:212px}
-.thumb{display:block;width:100%;padding:0;border:0;background:none;text-align:left;cursor:pointer;color:#9fbccd;font:12px/1.3 ${FONTS.sans.css}}
+.thumb{display:block;width:100%;padding:0;border:0;background:none;text-align:left;cursor:pointer;color:${P.onDarkMuted};font:12px/1.3 ${FONTS.sans.css}}
 .thumb svg{display:block;width:100%;height:auto;border-radius:5px;background:#fff;opacity:.72;border:2px solid transparent;box-shadow:0 2px 8px rgba(0,0,0,.4);transition:opacity .15s}
-.thumb:hover svg{opacity:1}.thumb.on svg{opacity:1;border-color:#7ccbee}.thumb span{display:block;margin:4px 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.thumb.on span{color:#fff}
+.thumb:hover svg{opacity:1}.thumb.on svg{opacity:1;border-color:${P.glow}}.thumb span{display:block;margin:4px 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.thumb.on span{color:#fff}
 .js.overview .rail{display:none}.js.overview main{margin-left:0;padding:20px 24px 30px}
 .js.overview .slide{display:inline-block;width:calc(33.3% - 14px);margin:7px;padding:0;vertical-align:top;cursor:pointer;animation:none}
 .js.overview .slide svg{width:100%}.js.overview .notes{display:none!important}
-.js.overview .slide.on svg{outline:4px solid #7ccbee}
+.js.overview .slide.on svg{outline:4px solid ${P.glow}}
 .js.full .bar,.js.full .progress,.js.full .rail,.js.full .notes{display:none!important}.js.full main{margin:0}.js.full .shell{padding-top:0}
 .js.full .slide{padding:0;display:none}.js.full .slide.on{display:block}
 .js.full .slide svg{width:min(100vw,calc(100vh * 16 / 9));border-radius:0;box-shadow:none;margin-top:calc((100vh - min(100vw * 9 / 16,100vh)) / 2)}
@@ -92,12 +114,13 @@ main{flex:1;min-width:0}
 @media (max-width:900px){.js.has-rail{--rail:0px}.js.has-rail .rail{display:none}.js.has-rail main{margin-left:0}.name{display:none}}
 @media (prefers-reduced-motion:reduce){.js .slide.on{animation:none}.progress i{transition:none}}
 </style></head><body>
-<div class="bar" role="toolbar" aria-label="Deck controls"><span class="brand">BRODY</span><span class="name">${escapeHtml(d.projectName)}</span><span class="sp"></span>
+<div class="bar" role="toolbar" aria-label="Deck controls">${brand}<span class="name">${escapeHtml(d.projectName)}</span><span class="sp"></span>
 <span class="nav"><button id="prev" aria-label="Previous slide">&larr;</button> <button id="next" aria-label="Next slide">&rarr;</button></span><span class="count" id="count" aria-live="polite"></span><span class="sp"></span>
 <button id="rl" aria-pressed="true">Slides</button><button id="nt" aria-pressed="false">Notes</button><button id="ov" aria-pressed="false">Overview</button><button id="fs">Full screen</button><button id="pr">Print / PDF</button></div>
 <div class="progress" aria-hidden="true"><i id="bar"></i></div>
 <div class="shell"><nav class="rail" id="rail" aria-label="Slides"></nav>
 <main id="deck">
+${defs}
 ${body}
 </main></div>
 <script>

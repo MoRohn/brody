@@ -24,7 +24,7 @@ const lineOf = (c: string | undefined, w: number, opacity = 1) => {
   return { color: s.hex, width: pt(w), transparency: Math.round((1 - s.alpha * opacity) * 100) };
 };
 
-function add(pptx: PptxGenJS, slide: Slide, p: Prim): void {
+function add(pptx: PptxGenJS, slide: Slide, p: Prim, d: DeckSlides): void {
   const T = pptx.ShapeType;
   switch (p.t) {
     case "rect": {
@@ -64,7 +64,13 @@ function add(pptx: PptxGenJS, slide: Slide, p: Prim): void {
         text: c.lines.join("\n") || " ",
         options: { fontFace: FONTS.sans.pptx, fontSize: pt(c.size), bold: !!c.bold, color: splitColor(c.pill ?? c.color).hex, align: c.align === "l" ? "left" : c.align === "c" ? "center" : "right", valign: "middle", fill: c.fill ? { color: splitColor(c.fill).hex } : undefined, margin: [pt(4), pt(10), pt(4), pt(10)] },
       })));
-      slide.addTable(rows as never, { x: inch(p.x), y: inch(p.y), w: inch(p.cols.reduce((a, b) => a + b, 0)), h: inch(p.rowH.reduce((a, b) => a + b, 0)), colW: p.cols.map(inch), rowH: p.rowH.map(inch), border: { type: "solid", color: "D5E1EA", pt: 0.75 }, autoPage: false });
+      slide.addTable(rows as never, { x: inch(p.x), y: inch(p.y), w: inch(p.cols.reduce((a, b) => a + b, 0)), h: inch(p.rowH.reduce((a, b) => a + b, 0)), colW: p.cols.map(inch), rowH: p.rowH.map(inch), border: { type: "solid", color: splitColor(p.rule ?? "#D5E1EA").hex, pt: 0.75 }, autoPage: false });
+      return;
+    }
+    case "image": {
+      const img = d.images[p.ref];
+      if (!img) return;
+      slide.addImage({ data: `${img.mime};base64,${img.data.toString("base64")}`, x: inch(p.x), y: inch(p.y), w: inch(p.w), h: inch(p.h), ...(p.opacity !== undefined ? { transparency: Math.round((1 - p.opacity) * 100) } : {}) });
       return;
     }
   }
@@ -83,7 +89,7 @@ export async function renderDeckPptx(d: DeckSlides): Promise<Buffer> {
     // The full-page background rectangle is the slide background, so it is not left as a shape to be dragged by accident.
     const bg = s.prims.find((p): p is Extract<Prim, { t: "rect" }> => p.t === "rect" && p.x === 0 && p.y === 0 && p.w === W && p.h === H);
     if (bg?.fill) slide.background = { color: splitColor(bg.fill).hex };
-    for (const p of s.prims) if (p !== bg) add(pptx, slide, p);
+    for (const p of s.prims) if (p !== bg) add(pptx, slide, p, d);
     slide.addNotes(s.notes);
   }
   const out = await pptx.write({ outputType: "nodebuffer" });

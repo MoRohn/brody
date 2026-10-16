@@ -8,7 +8,7 @@ import { Brand } from "@/components/Brand";
 import { StatusChip } from "@/components/project";
 import { Icon } from "@/components/Icon";
 import { ThemeControl } from "@/components/ThemeControl";
-import { api, ApiError, fmtBytes, uploadWithProgress, useApi } from "@/lib/client";
+import { api, ApiError, fmtBytes, uploadProject, useApi } from "@/lib/client";
 import { DEFAULT_EXCLUDED_DIRS } from "@/lib/ingest/classify";
 import { DownloadMenu } from "@/components/download";
 import { Chip, Empty, ErrorBox, Loading, Spinner } from "@/components/ui";
@@ -74,14 +74,8 @@ export default function Home() {
   const startUpload = useCallback(async () => {
     if (toSend.length === 0) { setErr(new ApiError("Choose at least one file, a folder or a ZIP archive first.", "empty", 400)); return; }
     setBusy(true); setErr(null); setPct(0);
-    const form = new FormData();
-    form.set("mode", tab === "files" ? (toSend.length === 1 ? "file" : "files") : tab);
-    for (const f of toSend) {
-      form.append("files", f);
-      form.append("paths", (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name);
-    }
     try {
-      const res = await uploadWithProgress(form, setPct);
+      const res = await uploadProject({ mode: tab === "files" ? (toSend.length === 1 ? "file" : "files") : tab, files: toSend }, setPct);
       router.push(`/p/${res.project.id}`);
     } catch (e) {
       setErr(e as ApiError);
@@ -118,9 +112,8 @@ export default function Home() {
     if (!bundleFile) return;
     setBundleBusy(true); setBundleErr(null);
     try {
-      const form = new FormData();
-      form.append("file", bundleFile);
-      const r = await api<{ project: { id: string } }>("/api/projects/import-bundle", { method: "POST", body: form });
+      // Sent in pieces like any upload, so an export of a large project opens too.
+      const r = await uploadProject({ mode: "bundle", files: [bundleFile] }, () => undefined);
       router.push(`/p/${r.project.id}`);
     } catch (e) { setBundleErr(e as ApiError); }
     setBundleBusy(false);
@@ -210,7 +203,7 @@ export default function Home() {
             )}
             {err && <div role="alert" className="mt-3 text-sm" style={{ color: "var(--crit)" }}>{err.message}{err.hint && <div className="text-muted">{err.hint}</div>}</div>}
             <div className="mt-3 flex items-center justify-between">
-              <span className="text-xs text-muted">{status.data ? `Limit ${fmtBytes(status.data.limits.maxUploadBytes)}. ` : ""}node_modules, .git, dist, build and similar folders are excluded by default and stay inspectable.</span>
+              <span className="text-xs text-muted">{status.data ? `Limit ${fmtBytes(status.data.limits.maxUploadBytes).replace(/\.0+ /, " ")}. ` : ""}node_modules, .git, dist, build and similar folders are excluded by default and stay inspectable.</span>
               <button className="btn btn-primary btn-cta" onClick={startUpload} disabled={busy || toSend.length === 0} aria-busy={busy}>{busy ? "Uploading…" : "Analyze"}<span className="disc" aria-hidden>→</span></button>
             </div>
               </div>

@@ -6,6 +6,7 @@ import { layoutMap } from "../map/layout";
 import { buildBrief } from "../docs/brief";
 import { loadReportData } from "../export/markdown";
 import { SCOPES } from "../export/scopes";
+import { detectBrand, type DeckBrand } from "./brand";
 import { exposureFor, firstSentence, humanizeFlow, isExecutiveWording, issueFor, plainText, roleText, themeFor } from "./lexicon";
 
 /**
@@ -22,7 +23,7 @@ export interface OverviewPoint { value: string; label: string; detail: string; s
 export interface Sev { critical: number; high: number; medium: number; low: number }
 
 export interface DeckContent {
-  version: 3;
+  version: 4;
   generatedAt: number;
   origin: "deterministic" | "ai";
   project: { name: string; source?: string; branch?: string; commit?: string };
@@ -58,6 +59,8 @@ export interface DeckContent {
   actions: { priority: "Now" | "Next" | "Later"; action: string; why: string; ref: string }[];
   coverage: { filesAnalysed: number; filesExcluded: number; sourceFiles: number; aiUsed: boolean; model?: string; confidence: string; sections: { ai: number; deterministic: number } };
   refs: { key: string; n: number; title: string }[];
+  /** The project's own logo, colours and screenshots, when its repository has them (see ./brand.ts). */
+  brand?: DeckBrand;
 }
 
 /** Titles of the report's numbered sections, in the order the full report numbers them. */
@@ -303,7 +306,7 @@ export function buildDeckContent(projectId: string): DeckContent {
   };
 
   return {
-    version: 3,
+    version: 4,
     generatedAt: Date.now(),
     origin: brief.origin,
     project: { name: project.name, source: project.sourceUrl ?? undefined, branch: project.branch ?? undefined, commit: project.commit ? project.commit.slice(0, 10) : undefined },
@@ -331,6 +334,7 @@ export function buildDeckContent(projectId: string): DeckContent {
     actions: capped,
     coverage: { filesAnalysed: stats.files ?? project.fileCount, filesExcluded: stats.excluded ?? 0, sourceFiles: stats.sourceFiles ?? 0, aiUsed: docs.meta.aiUsed, model: docs.meta.model, confidence: arch.pattern.confidence, sections: { ai: docs.meta.aiSections, deterministic: docs.meta.deterministicSections } },
     refs: reportRefs(),
+    brand: detectBrand(projectId),
   };
 }
 
@@ -339,7 +343,7 @@ export function ensureDeckContent(projectId: string): DeckContent {
   const db = getDb();
   const p = db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).get();
   const stored = (p?.analysis as { deck?: DeckContent } | null)?.deck;
-  if (stored?.version === 3) return stored;
+  if (stored?.version === 4) return stored;
   const deck = buildDeckContent(projectId);
   saveDeckContent(projectId, deck);
   return deck;

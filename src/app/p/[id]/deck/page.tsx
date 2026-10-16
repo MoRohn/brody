@@ -10,7 +10,9 @@ import type { DeckOutline } from "@/lib/deck";
 /** The executive deck: a live presenter, the slide list (which follows the presenter), and the downloads. */
 export default function DeckPage() {
   const { id } = useParams<{ id: string }>();
-  const { data } = useApi<DeckOutline>(`/api/projects/${id}/deck?format=outline`);
+  // The project's own branding is used when its repository has some; this switch draws the deck in Brody's style instead.
+  const [brand, setBrand] = useState(true);
+  const { data } = useApi<DeckOutline>(deckUrl(id, "outline", false, brand));
   const frame = useRef<HTMLIFrameElement>(null);
   const [current, setCurrent] = useState(0);
 
@@ -24,7 +26,7 @@ export default function DeckPage() {
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, []);
-  const go = (n: number) => { if (frame.current) frame.current.src = `${deckUrl(id, "html", true)}#s${n}`; setCurrent(n - 1); };
+  const go = (n: number) => { if (frame.current) frame.current.src = `${deckUrl(id, "html", true, brand)}#s${n}`; setCurrent(n - 1); };
 
   return (
     <div className="mx-auto max-w-[1320px] p-5">
@@ -35,16 +37,16 @@ export default function DeckPage() {
           <p className="mt-1 max-w-[68ch] text-muted">{data ? `${data.slides.length} slides` : "A briefing"} built from the same analysis as the report: the bottom line, a health scorecard, how the system is built, where the risk is and what to do next. Each slide names the report section behind it.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <a className="btn btn-primary" href={deckUrl(id, "pptx")} data-testid="deck-hero-pptx"><Icon name="download" size={15} /> PowerPoint</a>
-          <a className="btn" href={deckUrl(id, "pdf")}><Icon name="download" size={15} /> PDF</a>
-          <a className="btn" href={deckUrl(id, "html", true)} target="_blank" rel="noreferrer">Open full page</a>
+          <a className="btn btn-primary" href={deckUrl(id, "pptx", false, brand)} data-testid="deck-hero-pptx"><Icon name="download" size={15} /> PowerPoint</a>
+          <a className="btn" href={deckUrl(id, "pdf", false, brand)}><Icon name="download" size={15} /> PDF</a>
+          <a className="btn" href={deckUrl(id, "html", true, brand)} target="_blank" rel="noreferrer">Open full page</a>
         </div>
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_330px]">
         <div className="min-w-0">
           <div className="overflow-hidden rounded-2xl border border-line shadow-[0_18px_50px_-24px_rgba(11,36,54,0.55)]" style={{ background: "#0b2436" }}>
-            <iframe ref={frame} title="Executive summary deck preview" src={deckUrl(id, "html", true)} className="block h-[72vh] min-h-[460px] w-full border-0" data-testid="deck-preview" allow="fullscreen" />
+            <iframe ref={frame} title="Executive summary deck preview" src={deckUrl(id, "html", true, brand)} className="block h-[72vh] min-h-[460px] w-full border-0" data-testid="deck-preview" allow="fullscreen" />
           </div>
           <p className="mt-2 text-xs text-muted">Arrow keys move between slides · O overview · N speaker notes · F full screen</p>
         </div>
@@ -66,8 +68,9 @@ export default function DeckPage() {
           </section>
           <section className="card p-4">
             <h2 className="text-[15px] font-semibold">Download</h2>
-            <div className="mt-1 divide-y divide-line">{(["pptx", "pdf", "html"] as const).map((f) => <DeckFormatRow key={f} projectId={id} format={f} />)}</div>
+            <div className="mt-1 divide-y divide-line">{(["pptx", "pdf", "html"] as const).map((f) => <DeckFormatRow key={f} projectId={id} format={f} brand={brand} />)}</div>
           </section>
+          {data && <BrandingCard outline={data} brand={brand} onChange={setBrand} />}
           <section className="card p-4 text-[13px] text-muted">
             <h2 className="mb-1 text-[15px] font-semibold text-fg">Connected to the report</h2>
             Figures, finding references (such as SEC-001) and section names are the ones in the <Link href={`/p/${id}/reports`}>Repository Intelligence Report</Link>, so the two can be read side by side.
@@ -75,5 +78,38 @@ export default function DeckPage() {
         </aside>
       </div>
     </div>
+  );
+}
+
+/** What branding the repository supplied, where it came from, and the switch between it and Brody's style. */
+function BrandingCard({ outline, brand, onChange }: { outline: DeckOutline; brand: boolean; onChange: (on: boolean) => void }) {
+  const b = outline.brand;
+  if (!b) {
+    return (
+      <section className="card p-4 text-[13px] text-muted" data-testid="deck-branding">
+        <h2 className="mb-1 text-[15px] font-semibold text-fg">Branding</h2>
+        No logo, brand colours or screenshots were found in the repository, so the deck uses Brody&rsquo;s style. A logo file (such as <span className="mono">public/logo.svg</span>), a <span className="mono">--primary</span> or <span className="mono">--brand</span> colour, or screenshots under <span className="mono">docs/screenshots/</span> are picked up on the next analysis.
+      </section>
+    );
+  }
+  const found = [b.logo ? "logo" : "", b.colors.length ? (b.colors.length > 1 ? "colours" : "colour") : "", b.screens ? `${b.screens} screenshot${b.screens > 1 ? "s" : ""}` : ""].filter(Boolean);
+  return (
+    <section className="card p-4 text-[13px]" data-testid="deck-branding">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-[15px] font-semibold">Branding</h2>
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
+          <input type="checkbox" role="switch" checked={brand} onChange={(e) => onChange(e.target.checked)} aria-label="Use the project's own branding in the deck" data-testid="deck-brand-switch" />
+          Project&rsquo;s own
+        </label>
+      </div>
+      <p className="mt-1 text-muted">{brand ? `The deck uses the project's ${found.join(", ").replace(/, ([^,]*)$/, " and $1")} from its repository.` : "The deck uses Brody's style. Switch on to use the project's own branding."}</p>
+      {b.colors.length > 0 && (
+        <div className="mt-2 flex items-center gap-1.5" aria-label="Brand colours">
+          {b.colors.map((c) => <span key={c} className="inline-block h-5 w-5 rounded-md border border-line" style={{ background: c }} title={c} />)}
+          <span className="mono text-xs text-muted">{b.colors.join(" · ")}</span>
+        </div>
+      )}
+      <ul className="mt-2 space-y-0.5">{b.sources.slice(0, 6).map((p) => <li key={p} className="mono truncate text-xs text-muted" title={p}>{p}</li>)}</ul>
+    </section>
   );
 }

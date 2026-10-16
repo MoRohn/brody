@@ -15,8 +15,10 @@ const MODES = new Set(["file", "files", "folder", "zip"]);
 
 export async function POST(req: Request) {
   return guard(async () => {
-    // The size is enforced on the bytes actually received, not on the Content-Length header a client states.
-    const form = await readCappedForm(req, config.limits.maxUploadBytes, "The upload");
+    // The size is enforced on the bytes actually received, not on the Content-Length header a client states. This route takes
+    // the whole upload in one request, so it is bounded by the per-request limit; the home page sends larger projects in
+    // pieces through /api/projects/upload/sessions.
+    const form = await readCappedForm(req, Math.min(config.limits.maxUploadBytes, config.limits.maxRequestBytes), "The upload", "Upload from the Brody home page, which sends large projects in pieces, or leave out large or generated folders.");
     const mode = String(form.get("mode") ?? "files") as UploadMode;
     if (!MODES.has(mode)) throw new AppError("invalid_request", `Unknown upload mode "${mode}".`, 400);
     const items: UploadedItem[] = [];

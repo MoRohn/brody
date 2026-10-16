@@ -6,9 +6,9 @@ import { AppError } from "./errors";
  * request buffer far more than the limit before anything checks its size. This counts the real stream, stops reading and
  * drops the connection the moment the cap is passed, and only then parses the form.
  */
-export async function readCappedForm(req: Request, maxBytes: number, what: string): Promise<FormData> {
+export async function readCappedForm(req: Request, maxBytes: number, what: string, hint = "Exclude large or generated folders, upload a smaller project, or raise MAX_UPLOAD_BYTES."): Promise<FormData> {
   const limitMb = Math.round(maxBytes / 1024 / 1024);
-  const tooLarge = (declaredBytes?: number) => new AppError("upload_too_large", `${what} is ${declaredBytes ? `${Math.round(declaredBytes / 1024 / 1024)} MB, over` : "larger than"} the ${limitMb} MB limit.`, 413, "Exclude large or generated folders, upload a smaller project, or raise MAX_UPLOAD_BYTES.");
+  const tooLarge = (declaredBytes?: number) => new AppError("upload_too_large", `${what} is ${declaredBytes ? `${Math.round(declaredBytes / 1024 / 1024)} MB, over` : "larger than"} the ${limitMb} MB limit.`, 413, hint);
   const declared = Number(req.headers.get("content-length") ?? 0);
   if (Number.isFinite(declared) && declared >= maxBytes) throw tooLarge(declared);
   const type = req.headers.get("content-type") ?? "";

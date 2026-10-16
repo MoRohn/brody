@@ -8,11 +8,12 @@ import { generateDocs } from "../docs";
 import { buildGraph } from "../graph/build";
 import { decryptSecret, scrubToken } from "../ingest/credentials";
 import { downloadGitHubSnapshot, parseGitHubUrl } from "../ingest/github";
-import { normalizeFiles } from "../ingest/normalize";
+import { normalizeStagedFiles } from "../ingest/normalize";
+import { makeWorkDir, removeDir } from "../ingest/staging";
 import { attachFiles } from "../ingest/store";
 import { architectureDiagramText, architectureMermaid, erMermaid, legendText, repositoryTree, treeToText, loadModel } from "../map";
 import { buildSearchIndex } from "../retrieval";
-import { buildDeckContent, layoutDeck, saveDeckContent } from "../deck";
+import { buildDeckContent, deckSlides, saveDeckContent } from "../deck";
 import { runReview } from "../review";
 import { buildAssurance, saveAssurance } from "../assurance";
 import { AppError } from "../util/errors";
@@ -173,13 +174,19 @@ async function runJob(jobId: string, ledger: UsageLedger): Promise<void> {
       if (cred && !token) throw new AppError("credential_expired", "The stored GitHub credential can no longer be decrypted (the server restarted without CREDENTIAL_SECRET set).", 400, "Re-import the repository and supply the token again, or set CREDENTIAL_SECRET so stored credentials survive restarts.");
       const ref = parseGitHubUrl(project.sourceUrl);
       t.detail("import", `Downloading ${ref.owner}/${ref.repo} @ ${(project.commit ?? "").slice(0, 8)}`);
-      const snap = await downloadGitHubSnapshot(ref, project.commit ?? ref.ref ?? "HEAD", token);
-      t.check();
-      const { files, stats } = normalizeFiles(snap.files);
-      if (files.filter((f) => !f.isExcluded).length === 0) throw new AppError("no_source", "The repository contains no files that can be analysed after default exclusions.", 400, "Check that the branch contains source code, or inspect the excluded files list.");
-      attachFiles(projectId, { type: "github", name: project.name, url: project.sourceUrl, owner: project.owner ?? undefined, branch: project.branch ?? undefined, commit: project.commit ?? undefined }, files, stats);
-      for (const w of [...snap.warnings, ...stats.warnings]) t.note(w);
-      t.done("import", `Downloaded ${files.length} files`);
+      // The snapshot is downloaded and unpacked on disk, so a repository larger than memory can be imported.
+      const work = await makeWorkDir("gh");
+      try {
+        const snap = await downloadGitHubSnapshot(ref, project.commit ?? ref.ref ?? "HEAD", token, work);
+        t.check();
+        const { files, stats } = await normalizeStagedFiles(snap.files);
+        if (files.filter((f) => !f.isExcluded).length === 0) throw new AppError("no_source", "The repository contains no files that can be analysed after default exclusions.", 400, "Check that the branch contains source code, or inspect the excluded files list.");
+        attachFiles(projectId, { type: "github", name: project.name, url: project.sourceUrl, owner: project.owner ?? undefined, branch: project.branch ?? undefined, commit: project.commit ?? undefined }, files, stats);
+        for (const w of [...snap.warnings, ...stats.warnings]) t.note(w);
+        t.done("import", `Downloaded ${files.length} files`);
+      } finally {
+        await removeDir(work);
+      }
     } else {
       t.done("import", `Source already loaded (${project.fileCount} files)`);
     }
@@ -279,7 +286,9 @@ async function runJob(jobId: string, ledger: UsageLedger): Promise<void> {
     try {
       const deck = buildDeckContent(projectId);
       saveDeckContent(projectId, deck);
-      t.done("deck", `${layoutDeck(deck).slides.length} slides from the report's own findings; available as HTML, PowerPoint and PDF`);
+      const b = deck.brand;
+      const branding = b ? `; in the project's own branding (${[b.logo || b.logoOnDark ? "logo" : "", b.primary ? "colours" : "", b.hero || b.screens.length ? "screenshots" : ""].filter(Boolean).join(", ")})` : "";
+      t.done("deck", `${deckSlides(projectId).slides.length} slides from the report's own findings${branding}; available as HTML, PowerPoint and PDF`);
     } catch (e) {
       t.warn("deck", `The executive deck could not be prepared (${scrubToken(e instanceof Error ? e.message : String(e)).slice(0, 160)}). It will be built when first requested.`);
     }

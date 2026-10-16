@@ -37,7 +37,7 @@ describe("executive deck: the pipeline step", () => {
   it("stores its content with the analysis, beside the report's data", () => {
     const p = getDb().select().from(schema.projects).where(eq(schema.projects.id, pid)).get()!;
     const stored = (p.analysis as { deck?: DeckContent; docs?: unknown; architecture?: unknown }).deck!;
-    expect(stored.version).toBe(3);
+    expect(stored.version).toBe(4);
     expect((p.analysis as { docs?: unknown }).docs).toBeTruthy();
     expect(JSON.stringify(stored).length).toBeLessThan(60_000); // a compact snapshot, not a copy of the report
   });
@@ -49,7 +49,7 @@ describe("executive deck: the pipeline step", () => {
     delete stale.overview;
     getDb().update(schema.projects).set({ analysis: { ...analysis, deck: stale } }).where(eq(schema.projects.id, pid)).run();
     const fresh: DeckContent = ensureDeckContent(pid);
-    expect(fresh.version).toBe(3);
+    expect(fresh.version).toBe(4);
     expect(fresh.scorecard.length).toBe(6);
     expect(fresh.overview.business).toHaveLength(3);
     expect(layoutDeck(fresh).slides.length).toBe(14);

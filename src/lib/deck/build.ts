@@ -1,12 +1,15 @@
 import { textWidth, wrap } from "./measure";
 import type { FontKind, Prim, TableCell } from "./scene";
-import { C } from "./theme";
+import { C, type Palette } from "./theme";
 
 /** Drawing helpers shared by every slide: shapes plus text that is measured and wrapped here, once, for all formats. */
 export interface TextOpts { size: number; color?: string; bold?: boolean; italic?: boolean; font?: FontKind; align?: "l" | "c" | "r"; valign?: "t" | "m" | "b"; lh?: number; maxLines?: number; spacing?: number }
 
 export class Canvas {
   prims: Prim[] = [];
+
+  /** `P` is the deck's palette: Brody's own, or the project's (see brandPalette). */
+  constructor(readonly P: Palette = C) {}
 
   rect(x: number, y: number, w: number, h: number, o: { fill?: string; stroke?: string; sw?: number; r?: number; opacity?: number } = {}): void {
     this.prims.push({ t: "rect", x, y, w, h, ...o });
@@ -19,7 +22,7 @@ export class Canvas {
   }
   /** A line; with `arrow` a small triangle head is drawn as a polygon, so every format shows it the same way. */
   line(x1: number, y1: number, x2: number, y2: number, o: { color?: string; sw?: number; dash?: boolean; arrow?: boolean } = {}): void {
-    const color = o.color ?? C.line, sw = o.sw ?? 1.5;
+    const color = o.color ?? this.P.line, sw = o.sw ?? 1.5;
     if (!o.arrow) { this.prims.push({ t: "line", x1, y1, x2, y2, color, sw, dash: o.dash }); return; }
     const len = Math.hypot(x2 - x1, y2 - y1) || 1, ux = (x2 - x1) / len, uy = (y2 - y1) / len, head = 6 + sw * 2;
     this.prims.push({ t: "line", x1, y1, x2: x2 - ux * head * 0.7, y2: y2 - uy * head * 0.7, color, sw, dash: o.dash });
@@ -33,7 +36,7 @@ export class Canvas {
     const maxLines = Math.max(1, Math.min(o.maxLines ?? 99, Math.floor((h + 0.5) / lh)));
     const lines = wrap(str, w, { size: o.size, font, bold: o.bold, maxLines });
     if (lines.length === 0) return 0;
-    this.prims.push({ t: "text", x, y, w, h, lines, size: o.size, lh, color: o.color ?? C.text, bold: o.bold, italic: o.italic, font, align: o.align ?? "l", valign: o.valign ?? "t", spacing: o.spacing });
+    this.prims.push({ t: "text", x, y, w, h, lines, size: o.size, lh, color: o.color ?? this.P.text, bold: o.bold, italic: o.italic, font, align: o.align ?? "l", valign: o.valign ?? "t", spacing: o.spacing });
     return lines.length;
   }
 
@@ -53,8 +56,8 @@ export class Canvas {
    */
   card(x: number, y: number, w: number, h: number, o: { accent?: string; fill?: string; stroke?: string; r?: number; shadow?: boolean } = {}): void {
     const r = o.r ?? 16;
-    if (o.shadow) for (const [dy, op] of [[6, 0.03], [4, 0.035], [2, 0.045]] as const) this.rect(x + 1, y + dy, w - 2, h, { fill: C.text, r, opacity: op });
-    this.rect(x, y, w, h, { fill: o.fill ?? C.mist, stroke: o.stroke, sw: o.stroke ? 1.2 : undefined, r });
+    if (o.shadow) for (const [dy, op] of [[6, 0.03], [4, 0.035], [2, 0.045]] as const) this.rect(x + 1, y + dy, w - 2, h, { fill: this.P.text, r, opacity: op });
+    this.rect(x, y, w, h, { fill: o.fill ?? this.P.mist, stroke: o.stroke, sw: o.stroke ? 1.2 : undefined, r });
     if (o.accent) this.rect(x + r, y, w - r * 2, 5, { fill: o.accent, r: 2.5 });
   }
 
@@ -94,14 +97,14 @@ export class Canvas {
     const h = o.h ?? Math.round(size * 1.9);
     const w = Math.ceil(textWidth(label, size, "sans", o.bold ?? true)) + (o.padX ?? 20);
     this.rect(x, y, w, h, { fill: o.fill, r: h / 2 });
-    this.text(label, x, y, w, h, { size, color: o.color ?? C.white, bold: o.bold ?? true, align: "c", valign: "m", maxLines: 1 });
+    this.text(label, x, y, w, h, { size, color: o.color ?? this.P.white, bold: o.bold ?? true, align: "c", valign: "m", maxLines: 1 });
     return w;
   }
 
   /** A ring chart. Each segment is a polygon so all three formats draw it identically. */
   donut(cx: number, cy: number, r: number, thick: number, segments: { value: number; color: string }[]): void {
     const total = segments.reduce((a, s) => a + s.value, 0);
-    if (total <= 0) { this.ring(cx, cy, r, thick, C.skyDeep); return; }
+    if (total <= 0) { this.ring(cx, cy, r, thick, this.P.skyDeep); return; }
     let a0 = -90;
     const step = 3;
     const nonZero = segments.filter((s) => s.value > 0);
@@ -125,8 +128,8 @@ export class Canvas {
   }
 
   /** A horizontal bar: a track and a filled portion. */
-  bar(x: number, y: number, w: number, h: number, frac: number, color: string, track: string = C.sky): void {
-    this.rect(x, y, w, h, { fill: track, r: h / 2 });
+  bar(x: number, y: number, w: number, h: number, frac: number, color: string, track?: string): void {
+    this.rect(x, y, w, h, { fill: track ?? this.P.sky, r: h / 2 });
     const f = Math.max(0, Math.min(1, frac));
     if (f > 0) this.rect(x, y, Math.max(h, w * f), h, { fill: color, r: h / 2 });
   }
@@ -147,7 +150,7 @@ export class Canvas {
   /** A small pictogram for a kind of capability, drawn in white on a coloured disc. */
   icon(kind: string, cx: number, cy: number, r: number, color: string, o: { plain?: boolean } = {}): void {
     if (!o.plain) this.ellipse(cx - r, cy - r, r * 2, r * 2, { fill: color });
-    const w = o.plain ? color : C.white, s = r * 0.5, sw = Math.max(1.6, r * 0.09);
+    const w = o.plain ? color : this.P.white, s = r * 0.5, sw = Math.max(1.6, r * 0.09);
     const L = (x1: number, y1: number, x2: number, y2: number) => this.line(cx + x1 * s, cy + y1 * s, cx + x2 * s, cy + y2 * s, { color: w, sw });
     const P = (pts: [number, number][], open = false, fill = false) => this.poly(pts.map(([x, y]) => [cx + x * s, cy + y * s] as [number, number]), fill ? { fill: w } : { stroke: w, sw, open });
     const E = (x: number, y: number, dw: number, dh: number, fill = false) => this.ellipse(cx + (x - dw / 2) * s, cy + (y - dh / 2) * s, dw * s, dh * s, fill ? { fill: w } : { stroke: w, sw });
@@ -179,6 +182,31 @@ export class Canvas {
     }
   }
 
+  /** An image (a ref into DeckSlides.images) drawn to exactly this box. */
+  image(ref: string, x: number, y: number, w: number, h: number, o: { opacity?: number } = {}): void {
+    this.prims.push({ t: "image", x, y, w, h, ref, ...o });
+  }
+
+  /**
+   * A browser window for a screenshot: a soft shadow, a title bar with the three window controls and an address field,
+   * and a bezel around the content. Returns the content box, which the caller fills with the image.
+   */
+  browser(x: number, y: number, w: number, h: number, o: { label?: string; onDark?: boolean } = {}): { x: number; y: number; w: number; h: number } {
+    const r = 14, bar = 30, pad = 6;
+    for (const [dy, op] of (o.onDark ? [[16, 0.16], [8, 0.18], [3, 0.2]] : [[10, 0.035], [6, 0.045], [2, 0.06]]) as [number, number][]) this.rect(x + 2, y + dy, w - 4, h, { fill: "#000000", r, opacity: op });
+    this.rect(x, y, w, h, { fill: this.P.white, r });
+    this.rect(x, y, w, h, { stroke: o.onDark ? "#FFFFFF66" : this.P.line, sw: 1, r });
+    this.rect(x + 1, y + 1, w - 2, bar, { fill: this.P.mist2, r: r - 1 });
+    this.rect(x + 1, y + bar - 8, w - 2, 9, { fill: this.P.mist2 });
+    ["#FF5F57", "#FEBC2E", "#28C840"].forEach((c, i) => this.ellipse(x + 14 + i * 17, y + bar / 2 - 5, 10, 10, { fill: c }));
+    const fx = x + 76, fw = Math.min(w - 152, 360);
+    if (fw > 60) {
+      this.rect(fx + (w - 152 - fw) / 2, y + 7, fw, bar - 14, { fill: this.P.white, r: (bar - 14) / 2 });
+      if (o.label) this.text(o.label, fx + (w - 152 - fw) / 2 + 10, y + 7, fw - 20, bar - 14, { size: 11, color: this.P.muted, align: "c", valign: "m", maxLines: 1 });
+    }
+    return { x: x + pad, y: y + bar, w: w - pad * 2, h: h - bar - pad };
+  }
+
   /** A native table (PowerPoint gets a real, editable one). Cell text is wrapped here so row heights are exact. */
   table(x: number, y: number, cols: number[], rows: { text: string; size?: number; color?: string; bold?: boolean; align?: "l" | "c" | "r"; fill?: string; pill?: string; maxLines?: number }[][], o: { size?: number; minRowH?: number; padX?: number; padY?: number; header?: boolean; maxH?: number } = {}): number {
     const size = o.size ?? 14;
@@ -194,14 +222,14 @@ export class Canvas {
         const bold = c.bold ?? isHead;
         const lines = wrap(c.text, cols[ci] - padX * 2, { size: s, bold, maxLines: c.maxLines ?? 4 });
         h = Math.max(h, Math.round(lines.length * s * 1.3) + padY * 2);
-        return { lines, size: s, color: c.color ?? (isHead ? C.navy : C.text), bold, align: c.align ?? "l", fill: c.fill ?? (isHead ? C.mist2 : C.white), pill: c.pill } satisfies TableCell;
+        return { lines, size: s, color: c.color ?? (isHead ? this.P.navy : this.P.text), bold, align: c.align ?? "l", fill: c.fill ?? (isHead ? this.P.mist2 : this.P.white), pill: c.pill } satisfies TableCell;
       });
       if (o.maxH !== undefined && total + h > o.maxH && cells.length > 0) return;
       cells.push(out);
       rowH.push(h);
       total += h;
     });
-    this.prims.push({ t: "table", x, y, cols, rowH, cells, header: !!o.header });
+    this.prims.push({ t: "table", x, y, cols, rowH, cells, header: !!o.header, rule: this.P.rule });
     return total;
   }
 }
@@ -225,7 +253,7 @@ export function tablePrims(p: Extract<Prim, { t: "table" }>): Prim[] {
     let x = p.x;
     row.forEach((cell, ci) => {
       const w = p.cols[ci], h = p.rowH[ri];
-      out.push({ t: "rect", x, y, w, h, fill: cell.fill, stroke: C.rule, sw: 1 });
+      out.push({ t: "rect", x, y, w, h, fill: cell.fill, stroke: p.rule ?? C.rule, sw: 1 });
       const total = cell.lines.length * Math.round(cell.size * 1.3);
       if (cell.pill) {
         const pw = Math.min(w - 12, Math.ceil(textWidth(cell.lines[0] ?? "", cell.size, "sans", true)) + 22), ph = Math.round(cell.size * 1.9);

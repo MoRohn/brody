@@ -2,7 +2,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { api, ApiError, fmtDuration, uploadWithProgress, useApi } from "@/lib/client";
+import { api, ApiError, fmtDuration, uploadProject, useApi } from "@/lib/client";
 import { DEFAULT_EXCLUDED_DIRS } from "@/lib/ingest/classify";
 import { useDialog } from "@/lib/useDialog";
 import { Icon } from "./Icon";
@@ -71,12 +71,8 @@ function ReanalyzeDialog({ project, onClose, onRestarted }: { project: ProjectSu
   const upload = async () => {
     if (!picked) return;
     setBusy("upload"); setErr(null); setPct(0);
-    const form = new FormData();
-    form.set("mode", picked.mode === "files" ? (picked.files.length === 1 ? "file" : "files") : picked.mode);
-    form.set("previous", project.id);
-    for (const f of picked.files) { form.append("files", f); form.append("paths", relPath(f)); }
     try {
-      const res = await uploadWithProgress(form, setPct);
+      const res = await uploadProject({ mode: picked.mode === "files" ? (picked.files.length === 1 ? "file" : "files") : picked.mode, files: picked.files, paths: picked.files.map(relPath), previous: project.id }, setPct);
       router.push(`/p/${res.project.id}`);
     } catch (e) { setErr(e as ApiError); setBusy(""); }
   };

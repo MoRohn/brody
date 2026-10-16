@@ -83,7 +83,7 @@ test("buttons that start work show a ring and a busy label while they wait", asy
   await expect(refresh).not.toHaveAttribute("aria-busy", "true", { timeout: 10_000 });
 
   // Upload: the button, a progress bar and a status line all show activity while the server works.
-  await page.route("**/api/projects/upload", async (route) => { await new Promise((r) => setTimeout(r, 1500)); await route.fulfill({ status: 400, json: { error: { code: "invalid_upload", message: "Stopped by the test." } } }); });
+  await page.route("**/api/projects/upload/sessions/*/finish", async (route) => { await new Promise((r) => setTimeout(r, 1500)); await route.fulfill({ status: 400, json: { error: { code: "invalid_upload", message: "Stopped by the test." } } }); });
   await page.getByRole("button", { name: "Close" }).click();
   await page.locator('input[aria-label="Select files"]').setInputFiles({ name: "a.ts", mimeType: "text/plain", buffer: Buffer.from("export const a = 1;\n") });
   const analyze = page.getByRole("button", { name: /Analyze|Uploading/ });

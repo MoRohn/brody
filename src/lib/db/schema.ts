@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, index, primaryKey } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, index, primaryKey, blob } from "drizzle-orm/sqlite-core";
 
 /** Projects: one row per ingested codebase (a repository or an upload). */
 export const projects = sqliteTable("projects", {
@@ -37,6 +37,30 @@ export const blobs = sqliteTable("blobs", {
   hash: text("hash").primaryKey(),
   content: text("content").notNull(),
   size: integer("size").notNull(),
+});
+
+/** What an image looks like, measured once when it is stored: used to pick a logo variant and a brand colour. */
+export interface ImageMeta {
+  /** light: mostly light pixels (made for dark backgrounds); dark: mostly dark; color: neither. */
+  tone: "light" | "dark" | "color";
+  /** The corners are opaque: the image brings its own background. */
+  opaque: boolean;
+  /** The most prominent saturated colours, most prominent first ("#RRGGBB"). */
+  colors: string[];
+}
+
+/**
+ * Images kept whole so exports can show a project's own visuals (logos, icons, social cards, screenshots): a bounded PNG
+ * rendering of the file, keyed like blobs by the hash of the original file, so identical images across projects share it.
+ */
+export const images = sqliteTable("images", {
+  hash: text("hash").primaryKey(),
+  /** image/png, or image/jpeg for a photo kept as it was. */
+  mime: text("mime").notNull(),
+  width: integer("width").notNull(),
+  height: integer("height").notNull(),
+  data: blob("data", { mode: "buffer" }).notNull(),
+  meta: text("meta", { mode: "json" }).$type<ImageMeta>().notNull(),
 });
 
 export const files = sqliteTable(

@@ -65,11 +65,13 @@ export function attachFiles(projectId: string, source: IngestSource, files: Norm
     for (const f of files) if (f.text !== undefined && !blobRows.has(f.hash)) blobRows.set(f.hash, { hash: f.hash, content: f.text, size: f.size });
     const blobList = [...blobRows.values()];
     bulkInsert(schema.blobs, blobList, { ignoreConflicts: true });
+    bulkInsert(schema.images, files.filter((f) => f.image).map((f) => ({ hash: f.hash, mime: f.image!.mime, width: f.image!.width, height: f.image!.height, data: f.image!.data, meta: f.image!.meta })), { ignoreConflicts: true });
     tx.delete(schema.files).where(eq(schema.files.projectId, projectId)).run();
     const rows = files.map((f) => ({
       id: newId("f"), projectId, path: f.path, name: f.name, directory: f.directory, extension: f.extension, language: f.language, size: f.size, lines: f.lines, hash: f.hash,
       classification: f.classification, isBinary: f.isBinary, isTest: f.isTest, isGenerated: f.isGenerated, isVendor: f.isVendor, isExcluded: f.isExcluded, excludeReason: f.excludeReason ?? null,
-      isLarge: f.isLarge, hasContent: f.text !== undefined, duplicateOf: f.duplicateOf ?? null, parseStatus: "pending",
+      // Staged ingestion stores text as it reads it and drops it from memory, so `hasContent` (not `text`) says whether a blob exists.
+      isLarge: f.isLarge, hasContent: f.hasContent, duplicateOf: f.duplicateOf ?? null, parseStatus: "pending",
     }));
     bulkInsert(schema.files, rows);
   });

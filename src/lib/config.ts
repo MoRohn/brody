@@ -25,20 +25,31 @@ export const config = {
   // correctly; ".env.example" ships a relative DATABASE_PATH.
   databasePath: process.env.DATABASE_PATH === ":memory:" ? ":memory:" : path.resolve(/*turbopackIgnore: true*/ process.env.DATABASE_PATH ?? path.join(process.cwd(), "data", "brody.db")),
   limits: {
-    /** Maximum number of files accepted for a single project. */
-    maxFiles: int("MAX_FILES", 20000),
+    /**
+     * Maximum number of files accepted for a single project. Excluded files (dependencies, build output) count too but cost
+     * only a row each: they are never parsed or analysed.
+     */
+    maxFiles: int("MAX_FILES", 250_000),
     /** Maximum total uncompressed bytes accepted for a single project. */
-    maxTotalBytes: int("MAX_TOTAL_BYTES", 300 * 1024 * 1024),
+    maxTotalBytes: int("MAX_TOTAL_BYTES", 10 * 1024 ** 3),
     /** Files larger than this are stored as metadata only (no content). */
     maxFileBytes: int("MAX_FILE_BYTES", 2 * 1024 * 1024),
     /** Files larger than this are flagged as unusually large. */
     largeFileBytes: int("LARGE_FILE_BYTES", 300 * 1024),
     /** Maximum ZIP entries processed. */
-    maxZipEntries: int("MAX_ZIP_ENTRIES", 50000),
+    maxZipEntries: int("MAX_ZIP_ENTRIES", 300_000),
     /** Maximum compression ratio for any ZIP entry before it is treated as a bomb. */
     maxZipRatio: int("MAX_ZIP_RATIO", 200),
-    /** Maximum request body for uploads. */
-    maxUploadBytes: int("MAX_UPLOAD_BYTES", 200 * 1024 * 1024),
+    /**
+     * Maximum size of one upload (a project, ZIP archive or Brody export). The browser sends it in pieces that are written
+     * to disk as they arrive, so this bounds disk use, not memory.
+     */
+    maxUploadBytes: int("MAX_UPLOAD_BYTES", 10 * 1024 ** 3),
+    /**
+     * Maximum body of any single request. Next buffers each request body in memory while the proxy runs, so this bounds
+     * memory per request; next.config.ts reads the same variable. Large uploads arrive as many requests well below it.
+     */
+    maxRequestBytes: int("MAX_REQUEST_BYTES", 256 * 1024 * 1024),
   },
   ai: {
     provider: (process.env.AI_PROVIDER ?? "auto") as "auto" | "anthropic" | "openai-compatible" | "none",

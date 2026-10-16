@@ -12,10 +12,11 @@ const nextConfig: NextConfig = {
   // The app is addressed as http://brody.localhost (no setup), or http://brody:3003 with "127.0.0.1 brody" in /etc/hosts.
   allowedDevOrigins: ["brody.localhost", "brody"],
   experimental: {
-    // Because the app uses a proxy (the host allow-list), Next buffers every request body and, by default, silently
-    // truncates it at 10 MB, which breaks large folder uploads with "could not be read as a multipart form". Buffer up
-    // to the app's own upload limit instead (MAX_UPLOAD_BYTES, 200 MB by default); the upload route enforces it.
-    proxyClientMaxBodySize: Number(process.env.MAX_UPLOAD_BYTES) || 200 * 1024 * 1024,
+    // Because the app uses a proxy (the host allow-list), Next buffers every request body in memory and, by default,
+    // silently truncates it at 10 MB. Buffer up to the app's per-request limit instead (MAX_REQUEST_BYTES, 256 MB by
+    // default; the routes enforce it). Uploads up to MAX_UPLOAD_BYTES (10 GB) arrive as many small requests, so this
+    // never has to hold a whole project.
+    proxyClientMaxBodySize: Number(process.env.MAX_REQUEST_BYTES) || 256 * 1024 * 1024,
     // Lets constrained CI/Docker builders cap parallel workers (for example NEXT_BUILD_CPUS=2).
     ...(process.env.NEXT_BUILD_CPUS ? { cpus: Number(process.env.NEXT_BUILD_CPUS) } : {}),
   },
